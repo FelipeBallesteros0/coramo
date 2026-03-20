@@ -136,65 +136,89 @@ def call_tool(name: str, args: dict) -> str:
     return f"Tool desconocida: {name}"
 
 
-def ask_llm(question: str) -> str:
+def _llm_request(messages: list, stream: bool, extra: dict = None) -> dict | str:
+    """Hace una peticion a llama-server. Si stream=False devuelve dict, si stream=True devuelve el objeto response."""
+    payload = {"messages": messages, "temperature": 0.7, "max_tokens": 120, "stream": stream}
+    if extra:
+        payload.update(extra)
+    req = urllib.request.Request(
+        f"{LLAMA_URL}/v1/chat/completions",
+        data=json.dumps(payload).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    resp = urllib.request.urlopen(req, timeout=120)
+    if not stream:
+        return json.loads(resp.read())
+    return resp
+
+
+def _stream_speak(resp) -> None:
+    """Lee tokens SSE del LLM, acumula oraciones y las sintetiza en cuanto estan completas."""
+    sentence_buf = ""
+    sentence_end = re.compile(r"[.!?…]+\s*")
+
+    for raw_line in resp:
+        line = raw_line.decode().strip()
+        if not line.startswith("data:"):
+            continue
+        data_str = line[5:].strip()
+        if data_str == "[DONE]":
+            break
+        try:
+            chunk = json.loads(data_str)
+        except Exception:
+            continue
+        delta = chunk["choices"][0].get("delta", {})
+        token = delta.get("content", "")
+        if not token:
+            continue
+        sentence_buf += token
+
+        # Sintetizar cuando hay una oracion completa
+        match = sentence_end.search(sentence_buf)
+        if match:
+            sentence = sentence_buf[:match.end()].strip()
+            sentence_buf = sentence_buf[match.end():]
+            if sentence:
+                log(f"  [stream] '{sentence[:60]}'")
+                speak(sentence)
+
+    # Resto sin punto final
+    if sentence_buf.strip():
+        log(f"  [stream] '{sentence_buf.strip()[:60]}'")
+        speak(sentence_buf.strip())
+
+
+def ask_llm(question: str) -> None:
+    """Consulta el LLM con streaming. Habla cada oracion en cuanto esta lista."""
     messages = [
         {"role": "system", "content": SYSTEM_MSG},
         {"role": "user",   "content": question},
     ]
 
-    # Primera llamada — el LLM puede responder o llamar una tool
-    payload = json.dumps({
-        "messages": messages,
-        "tools": TOOLS,
-        "tool_choice": "auto",
-        "temperature": 0.7,
-        "max_tokens": 200,
-        "stream": False,
-    }).encode()
-
-    req = urllib.request.Request(
-        f"{LLAMA_URL}/v1/chat/completions",
-        data=payload,
-        headers={"Content-Type": "application/json"},
-    )
+    # Primera llamada sin stream para detectar tool calls
     log("  [llm] esperando respuesta...")
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        data = json.loads(resp.read())
-
+    data = _llm_request(messages, stream=False, extra={"tools": TOOLS, "tool_choice": "auto"})
     msg = data["choices"][0]["message"]
-    log(f"  [llm] finish_reason={data['choices'][0]['finish_reason']}")
+    finish = data["choices"][0]["finish_reason"]
+    log(f"  [llm] finish_reason={finish}")
 
-    # Si el LLM quiere llamar una tool
-    if data["choices"][0]["finish_reason"] == "tool_calls" and msg.get("tool_calls"):
+    if finish == "tool_calls" and msg.get("tool_calls"):
+        # Ejecutar tools y luego respuesta en streaming
         messages.append(msg)
         for tc in msg["tool_calls"]:
             name = tc["function"]["name"]
             args = json.loads(tc["function"]["arguments"])
             result_str = call_tool(name, args)
-            messages.append({
-                "role": "tool",
-                "tool_call_id": tc["id"],
-                "content": result_str,
-            })
-
-        # Segunda llamada — el LLM genera la respuesta final en voz
-        payload2 = json.dumps({
-            "messages": messages,
-            "temperature": 0.7,
-            "max_tokens": 150,
-            "stream": False,
-        }).encode()
-        req2 = urllib.request.Request(
-            f"{LLAMA_URL}/v1/chat/completions",
-            data=payload2,
-            headers={"Content-Type": "application/json"},
-        )
-        log("  [llm] esperando respuesta final...")
-        with urllib.request.urlopen(req2, timeout=120) as resp2:
-            data2 = json.loads(resp2.read())
-        return data2["choices"][0]["message"]["content"].strip()
-
-    return msg.get("content", "").strip()
+            messages.append({"role": "tool", "tool_call_id": tc["id"], "content": result_str})
+        log("  [llm] generando respuesta final en streaming...")
+        resp = _llm_request(messages, stream=True)
+        _stream_speak(resp)
+    else:
+        # Respuesta normal — re-pedir en streaming para hablar mientras genera
+        log("  [llm] re-enviando en streaming...")
+        resp = _llm_request(messages, stream=True)
+        _stream_speak(resp)
 
 
 def record_wav(filename: str, seconds: int) -> None:
@@ -315,9 +339,7 @@ def listen_for_wake_word() -> None:
                     log(f"Pregunta: {question_text}")
                     log("Enviando al LLM...")
                     try:
-                        response = ask_llm(question_text)
-                        log(f"Respuesta: {response}")
-                        speak(response)
+                        ask_llm(question_text)
                     except Exception as e:
                         log(f"  [error en LLM] {type(e).__name__}: {e}")
                 else:
