@@ -32,6 +32,8 @@ Micrófono → whisper small (GPU 1, wake word)
 
 **Ejemplo:** *"coramo pon el servo a 90 grados"* → mueve servo físicamente y confirma en voz.
 
+**Optimización:** Streaming LLM→TTS — empieza a hablar en cuanto termina la primera oración, sin esperar la respuesta completa.
+
 ## Índice de documentación
 
 - [01 - Conectividad de red](docs/01-red.md)
