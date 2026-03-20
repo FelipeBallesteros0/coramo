@@ -1,0 +1,18 @@
+[Unit]
+Description=Coramo Voice Assistant
+After=sound.target graphical-session.target
+Wants=sound.target
+
+[Service]
+Type=simple
+User=felipe
+WorkingDirectory=/home/felipe
+Environment=HOME=/home/felipe
+Environment=DISPLAY=:0
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+ExecStart=/usr/bin/python3 /home/felipe/coramo/scripts/coramo-assistant.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
