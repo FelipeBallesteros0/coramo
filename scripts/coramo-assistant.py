@@ -25,8 +25,9 @@ def log(msg: str) -> None:
     _log_file.write(line + "\n")
 
 # -- Paths -------------------------------------------------------------------
-WHISPER_BIN     = os.path.expanduser("~/whisper.cpp/build/bin/whisper-cli")
-WHISPER_MODEL   = os.path.expanduser("~/whisper.cpp/models/ggml-small.bin")
+WHISPER_BIN          = os.path.expanduser("~/whisper.cpp/build/bin/whisper-cli")
+WHISPER_MODEL_WAKE   = os.path.expanduser("~/whisper.cpp/models/ggml-small.bin")           # rapido para wake word
+WHISPER_MODEL_QUERY  = os.path.expanduser("~/whisper.cpp/models/ggml-large-v3-turbo.bin")  # mejor calidad para preguntas
 LLAMA_SERVER    = os.path.expanduser("~/llama.cpp/build/bin/llama-server")
 LLAMA_MODEL     = os.path.expanduser("~/llama.cpp/models/qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf")
 PIPER_BIN       = os.path.expanduser("~/coramo-env/bin/piper")
@@ -52,8 +53,8 @@ WAKE_WORDS = ["coramo", "hola coramo", "hey coramo", "oye coramo"]
 # -- Audio settings ----------------------------------------------------------
 SAMPLE_RATE      = 16000
 CHANNELS         = 1
-CHUNK_SECONDS    = 2
-QUESTION_SECONDS = 7
+CHUNK_SECONDS    = 6   # chunk largo para capturar wake word + pregunta en uno
+QUESTION_SECONDS = 7   # solo si wake word llegó sin pregunta
 
 # -- Global server process ---------------------------------------------------
 server_proc = None
@@ -132,11 +133,13 @@ def record_wav(filename: str, seconds: int) -> None:
     ], check=True)
 
 
-def transcribe(audio_file: str) -> str:
+def transcribe(audio_file: str, model: str = None) -> str:
+    if model is None:
+        model = WHISPER_MODEL_WAKE
     env = {**os.environ, **WHISPER_GPU_ENV}
     result = subprocess.run([
         WHISPER_BIN,
-        "-m", WHISPER_MODEL,
+        "-m", model,
         "-f", audio_file,
         "-l", "es",
         "--no-prints",
@@ -150,6 +153,17 @@ def transcribe(audio_file: str) -> str:
 def contains_wake_word(text: str) -> bool:
     normalized = re.sub(r"[^\w\s]", "", text.lower().strip())
     return any(ww in normalized for ww in WAKE_WORDS)
+
+
+def extract_question(text: str) -> str:
+    """Extrae el texto que viene despues de la wake word."""
+    normalized = re.sub(r"[^\w\s]", "", text.lower())
+    for ww in sorted(WAKE_WORDS, key=len, reverse=True):  # mas largo primero
+        if ww in normalized:
+            idx = normalized.index(ww) + len(ww)
+            remainder = text[idx:].strip(" ,.-\n")
+            return remainder
+    return ""
 
 
 def speak(text: str) -> None:
@@ -194,34 +208,44 @@ def listen_for_wake_word() -> None:
 
             if contains_wake_word(text):
                 log("Wake word detectado!")
-                speak("Dime")
 
-                question_file = tempfile.mktemp(suffix=".wav")
-                try:
-                    log(f"Escuchando pregunta ({QUESTION_SECONDS}s)...")
-                    record_wav(question_file, QUESTION_SECONDS)
-                    log("Transcribiendo pregunta...")
-                    question_text = transcribe(question_file)
-                    log(f"  [transcripcion] '{question_text}'")
+                # Intentar extraer pregunta del mismo chunk
+                question_text = extract_question(text)
+                log(f"  [pregunta en chunk] '{question_text}'")
 
-                    question_text = re.sub(
-                        r"^(?:hola\s+|hey\s+|oye\s+)?coramo[,\s]*",
-                        "", question_text, flags=re.IGNORECASE
-                    ).strip()
+                if not question_text:
+                    # Wake word sola: pedir que continuen
+                    speak("Dime")
+                    question_file = tempfile.mktemp(suffix=".wav")
+                    try:
+                        log(f"Escuchando pregunta ({QUESTION_SECONDS}s)...")
+                        record_wav(question_file, QUESTION_SECONDS)
+                        log("Transcribiendo pregunta...")
+                        question_text = transcribe(question_file, model=WHISPER_MODEL_QUERY)
+                        log(f"  [transcripcion] '{question_text}'")
+                    except Exception as e:
+                        log(f"  [error grabando pregunta] {type(e).__name__}: {e}")
+                    finally:
+                        if os.path.exists(question_file):
+                            os.remove(question_file)
+                else:
+                    # Pregunta incluida en el mismo chunk, re-transcribir con modelo mejor
+                    log("Pregunta en mismo chunk, re-transcribiendo con large-v3-turbo...")
+                    question_text = transcribe(chunk_file, model=WHISPER_MODEL_QUERY)
+                    question_text = extract_question(question_text)
+                    log(f"  [re-transcripcion] '{question_text}'")
 
-                    if question_text:
-                        log(f"Pregunta: {question_text}")
-                        log("Enviando al LLM...")
+                if question_text:
+                    log(f"Pregunta: {question_text}")
+                    log("Enviando al LLM...")
+                    try:
                         response = ask_llm(question_text)
                         log(f"Respuesta: {response}")
                         speak(response)
-                    else:
-                        speak("No entendi la pregunta, intentalo de nuevo.")
-                except Exception as e:
-                    log(f"  [error en pipeline] {type(e).__name__}: {e}")
-                finally:
-                    if os.path.exists(question_file):
-                        os.remove(question_file)
+                    except Exception as e:
+                        log(f"  [error en LLM] {type(e).__name__}: {e}")
+                else:
+                    speak("No entendi la pregunta, intentalo de nuevo.")
 
                 log("Volviendo a escuchar...")
 
@@ -242,7 +266,8 @@ def listen_for_wake_word() -> None:
 if __name__ == "__main__":
     for path, name in [
         (WHISPER_BIN,   "whisper-cli"),
-        (WHISPER_MODEL, "whisper model"),
+        (WHISPER_MODEL_WAKE,  "whisper model (wake)"),
+        (WHISPER_MODEL_QUERY, "whisper model (query)"),
         (LLAMA_SERVER,  "llama-server"),
         (LLAMA_MODEL,   "Qwen model"),
         (PIPER_BIN,     "piper"),
