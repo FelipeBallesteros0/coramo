@@ -1,0 +1,13 @@
+# Fragmento de /boot/firmware/config.txt relevante para el proyecto coramo
+# Añadir a la sección [all] al final del archivo
+
+# Kernel Coreforge con soporte amdgpu
+kernel=kernel_2712.img
+
+# Alimentacion via DC jack (Suptronics X1011) sin negociacion USB-C PD
+usb_max_current_enable=1
+avoid_warnings=1
+
+# PCIe para GPU AMD RX 580
+dtparam=pciex1
+dtparam=pciex1_gen=3
