@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """
 Coramo Voice Assistant
-Pipeline: whisper (CPU) -> wake word -> whisper (CPU) -> Qwen 2.5 7B (GPU 1) -> Piper TTS
-Logs guardados en /tmp/coramo-debug.log para diagnostico post-crash.
+Pipeline: whisper (GPU 1) -> wake word -> whisper (GPU 1) -> Qwen3-8B (GPU 0) -> Piper TTS
+Function calling: mover_servo(angulo) -> Arduino Mega via USB serial
+Logs guardados en ~/coramo-debug.log para diagnostico post-crash.
 """
 
 import os
@@ -15,6 +16,8 @@ import json
 import urllib.request
 import signal
 import atexit
+sys.path.insert(0, os.path.dirname(__file__))
+import arduino
 
 # -- Log a archivo para sobrevivir crashes -----------------------------------
 _log_file = open("/home/felipe/coramo-debug.log", "w", buffering=1)
@@ -93,17 +96,57 @@ def stop_llm_server() -> None:
         server_proc.wait()
 
 
+TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "mover_servo",
+            "description": "Mueve el servo fisico al angulo indicado en grados",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "angulo": {
+                        "type": "integer",
+                        "description": "Angulo del servo en grados, entre 0 y 180",
+                    }
+                },
+                "required": ["angulo"],
+            },
+        },
+    }
+]
+
+SYSTEM_MSG = (
+    "Eres Coramo, un asistente de voz en espanol con control de hardware. "
+    "Responde de forma concisa en maximo 3 oraciones. "
+    "Solo texto plano, sin listas ni markdown. /no_think"
+)
+
+
+def call_tool(name: str, args: dict) -> str:
+    """Ejecuta una tool y retorna el resultado como string."""
+    if name == "mover_servo":
+        angulo = args.get("angulo", 90)
+        log(f"  [tool] mover_servo({angulo})")
+        result = arduino.mover_servo(angulo)
+        log(f"  [tool] respuesta arduino: {result}")
+        if result.get("ok"):
+            return f"Servo movido a {result['angulo']} grados correctamente."
+        return f"Error al mover servo: {result.get('error', 'desconocido')}"
+    return f"Tool desconocida: {name}"
+
+
 def ask_llm(question: str) -> str:
-    system_msg = (
-        "Eres Coramo, un asistente de voz en espanol. "
-        "Responde de forma concisa en maximo 3 oraciones. "
-        "Solo texto plano, sin listas ni markdown. /no_think"
-    )
+    messages = [
+        {"role": "system", "content": SYSTEM_MSG},
+        {"role": "user",   "content": question},
+    ]
+
+    # Primera llamada — el LLM puede responder o llamar una tool
     payload = json.dumps({
-        "messages": [
-            {"role": "system", "content": system_msg},
-            {"role": "user",   "content": question},
-        ],
+        "messages": messages,
+        "tools": TOOLS,
+        "tool_choice": "auto",
         "temperature": 0.7,
         "max_tokens": 200,
         "stream": False,
@@ -116,10 +159,42 @@ def ask_llm(question: str) -> str:
     )
     log("  [llm] esperando respuesta...")
     with urllib.request.urlopen(req, timeout=120) as resp:
-        raw = resp.read()
-    log(f"  [llm] respuesta recibida ({len(raw)} bytes)")
-    data = json.loads(raw)
-    return data["choices"][0]["message"]["content"].strip()
+        data = json.loads(resp.read())
+
+    msg = data["choices"][0]["message"]
+    log(f"  [llm] finish_reason={data['choices'][0]['finish_reason']}")
+
+    # Si el LLM quiere llamar una tool
+    if data["choices"][0]["finish_reason"] == "tool_calls" and msg.get("tool_calls"):
+        messages.append(msg)
+        for tc in msg["tool_calls"]:
+            name = tc["function"]["name"]
+            args = json.loads(tc["function"]["arguments"])
+            result_str = call_tool(name, args)
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tc["id"],
+                "content": result_str,
+            })
+
+        # Segunda llamada — el LLM genera la respuesta final en voz
+        payload2 = json.dumps({
+            "messages": messages,
+            "temperature": 0.7,
+            "max_tokens": 150,
+            "stream": False,
+        }).encode()
+        req2 = urllib.request.Request(
+            f"{LLAMA_URL}/v1/chat/completions",
+            data=payload2,
+            headers={"Content-Type": "application/json"},
+        )
+        log("  [llm] esperando respuesta final...")
+        with urllib.request.urlopen(req2, timeout=120) as resp2:
+            data2 = json.loads(resp2.read())
+        return data2["choices"][0]["message"]["content"].strip()
+
+    return msg.get("content", "").strip()
 
 
 def record_wav(filename: str, seconds: int) -> None:
@@ -279,7 +354,14 @@ if __name__ == "__main__":
             sys.exit(1)
 
     atexit.register(stop_llm_server)
+    atexit.register(arduino.disconnect)
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+
+    log("Conectando Arduino...")
+    if arduino.connect():
+        log("Arduino listo.")
+    else:
+        log("ADVERTENCIA: Arduino no disponible, function calling desactivado.")
 
     start_llm_server()
     listen_for_wake_word()
