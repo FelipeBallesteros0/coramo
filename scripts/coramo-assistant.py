@@ -29,7 +29,7 @@ WHISPER_BIN          = os.path.expanduser("~/whisper.cpp/build/bin/whisper-cli")
 WHISPER_MODEL_WAKE   = os.path.expanduser("~/whisper.cpp/models/ggml-small.bin")           # rapido para wake word
 WHISPER_MODEL_QUERY  = os.path.expanduser("~/whisper.cpp/models/ggml-large-v3-turbo.bin")  # mejor calidad para preguntas
 LLAMA_SERVER    = os.path.expanduser("~/llama.cpp/build/bin/llama-server")
-LLAMA_MODEL     = os.path.expanduser("~/llama.cpp/models/qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf")
+LLAMA_MODEL     = os.path.expanduser("~/llama.cpp/models/Qwen3-8B-Q4_K_M.gguf")
 PIPER_BIN       = os.path.expanduser("~/coramo-env/bin/piper")
 PIPER_MODEL     = os.path.expanduser("~/piper-voices/es_ES-davefx-medium.onnx")
 
@@ -69,6 +69,7 @@ def start_llm_server() -> None:
         "-m", LLAMA_MODEL,
         "--n-gpu-layers", "99",
         "--ctx-size", "2048",
+        "-fit", "off",
         "--host", LLAMA_HOST,
         "--port", str(LLAMA_PORT),
         "--log-disable",
@@ -96,7 +97,7 @@ def ask_llm(question: str) -> str:
     system_msg = (
         "Eres Coramo, un asistente de voz en espanol. "
         "Responde de forma concisa en maximo 3 oraciones. "
-        "Solo texto plano, sin listas ni markdown."
+        "Solo texto plano, sin listas ni markdown. /no_think"
     )
     payload = json.dumps({
         "messages": [
@@ -269,7 +270,7 @@ if __name__ == "__main__":
         (WHISPER_MODEL_WAKE,  "whisper model (wake)"),
         (WHISPER_MODEL_QUERY, "whisper model (query)"),
         (LLAMA_SERVER,  "llama-server"),
-        (LLAMA_MODEL,   "Qwen model"),
+        (LLAMA_MODEL,   "Qwen3 model"),
         (PIPER_BIN,     "piper"),
         (PIPER_MODEL,   "piper voice"),
     ]:
