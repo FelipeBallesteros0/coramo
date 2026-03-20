@@ -1,6 +1,6 @@
 # Proyecto Coramo
 
-Raspberry Pi 5 configurada como estación de trabajo con GPU discreta AMD RX 580, transcripción de voz en tiempo real y alimentación por DC jack.
+Raspberry Pi 5 configurada como estación de trabajo con GPUs discretas AMD RX 580, asistente de voz con IA local y control de hardware via Arduino.
 
 ## Hardware
 
@@ -13,6 +13,24 @@ Raspberry Pi 5 configurada como estación de trabajo con GPU discreta AMD RX 580
 | Expansión PCIe | Suptronics X1011 M.2 PCIe Multiplexer |
 | WiFi USB | MediaTek MT7921U (antena externa) |
 | Audio | USB PnP Sound Device (PCM2902) |
+| Microcontrolador | Arduino Mega 2560 (CH340) vía USB |
+
+## Asistente de Voz
+
+Pipeline completo de voz a voz con control de hardware:
+
+```
+Micrófono → whisper small (GPU 1, wake word)
+          → whisper large-v3-turbo (GPU 1, transcripción)
+          → Qwen3-8B Q4_K_M (GPU 0, LLM)
+          → function calling → Arduino Mega → servo
+          → Piper TTS (CPU, es_ES-davefx)
+          → Altavoz
+```
+
+**Wake words:** "coramo", "hola coramo", "hey coramo", "oye coramo"
+
+**Ejemplo:** *"coramo pon el servo a 90 grados"* → mueve servo físicamente y confirma en voz.
 
 ## Índice de documentación
 
@@ -21,12 +39,19 @@ Raspberry Pi 5 configurada como estación de trabajo con GPU discreta AMD RX 580
 - [03 - GPU AMD RX 580 en RPi5](docs/03-gpu.md)
 - [04 - Salida de video](docs/04-video.md)
 - [05 - Whisper.cpp con GPU](docs/05-whisper.md)
+- [06 - Asistente de voz](docs/06-asistente-voz.md)
 
-## Scripts de utilidad
+## Scripts y código
 
-- [`scripts/whisper-stream.sh`](scripts/whisper-stream.sh) — Transcripción de voz en tiempo real
-- [`scripts/fix-firmware-zst.sh`](scripts/fix-firmware-zst.sh) — Descomprimir firmwares para kernel 6.6.x
-- [`scripts/network-check.sh`](scripts/network-check.sh) — Verificar estado de red y failover
+| Archivo | Descripción |
+|---|---|
+| [`scripts/coramo-assistant.py`](scripts/coramo-assistant.py) | Asistente de voz principal |
+| [`scripts/arduino.py`](scripts/arduino.py) | Comunicación serial con Arduino |
+| [`arduino/coramo_servo.ino`](arduino/coramo_servo.ino) | Sketch Arduino para control de servo |
+| [`scripts/whisper-stream.sh`](scripts/whisper-stream.sh) | Transcripción en tiempo real |
+| [`scripts/fix-firmware-zst.sh`](scripts/fix-firmware-zst.sh) | Descomprimir firmwares para kernel 6.6.x |
+| [`scripts/network-check.sh`](scripts/network-check.sh) | Verificar estado de red y failover |
+| [`config/coramo-assistant.service`](config/coramo-assistant.service) | Servicio systemd del asistente |
 
 ## Estado del proyecto
 
@@ -35,6 +60,8 @@ Raspberry Pi 5 configurada como estación de trabajo con GPU discreta AMD RX 580
 - [x] Kernel con soporte amdgpu
 - [x] Dos GPU RX 580 operativas
 - [x] Salida de video por GPU
-- [x] Whisper large-v1 / small en tiempo real con GPU
-- [ ] Integración de whisper en pipeline de voz
-- [ ] Configuración multi-monitor
+- [x] Whisper large-v3-turbo en tiempo real con GPU
+- [x] Asistente de voz con wake word
+- [x] LLM Qwen3-8B con GPU (llama-server)
+- [x] Piper TTS en español
+- [x] Function calling → control de servo via Arduino Mega
