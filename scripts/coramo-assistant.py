@@ -41,7 +41,7 @@ AUDIO_DEVICE    = "default"
 
 # -- GPU assignment ----------------------------------------------------------
 # GPU 0 (renderD129) -> llama-server / Qwen
-# GPU 1 (renderD130) -> whisper
+# GPU 1 (renderD130) -> whisper (num_kcq=0 en kernel params resolvio ring timeouts)
 WHISPER_GPU_ENV = {"GGML_VK_VISIBLE_DEVICES": "1"}
 LLAMA_GPU_ENV   = {"GGML_VK_VISIBLE_DEVICES": "0"}
 
@@ -54,10 +54,11 @@ LLAMA_URL  = f"http://{LLAMA_HOST}:{LLAMA_PORT}"
 WAKE_WORDS = ["coramo", "hola coramo", "hey coramo", "oye coramo"]
 
 # -- Audio settings ----------------------------------------------------------
-SAMPLE_RATE      = 16000
-CHANNELS         = 1
-CHUNK_SECONDS    = 6   # chunk largo para capturar wake word + pregunta en uno
-QUESTION_SECONDS = 7   # solo si wake word llegó sin pregunta
+SAMPLE_RATE        = 16000
+CHANNELS           = 1
+CHUNK_SECONDS      = 6    # chunk para wake word detection
+CONTINUATION_SECS  = 8    # segundos extra grabados tras detectar wake word en el chunk
+QUESTION_SECONDS   = 14   # cuando wake word llega sola sin pregunta
 
 # -- Global server process ---------------------------------------------------
 server_proc = None
@@ -221,6 +222,17 @@ def ask_llm(question: str) -> None:
         _stream_speak(resp)
 
 
+def concat_wav(file1: str, file2: str, output: str) -> None:
+    """Concatena dos WAV del mismo formato en uno solo."""
+    import wave
+    with wave.open(file1) as w1, wave.open(file2) as w2:
+        params = w1.getparams()
+        data = w1.readframes(w1.getnframes()) + w2.readframes(w2.getnframes())
+    with wave.open(output, "wb") as out:
+        out.setparams(params)
+        out.writeframes(data)
+
+
 def record_wav(filename: str, seconds: int) -> None:
     subprocess.run([
         "arecord", "-q",
@@ -329,11 +341,21 @@ def listen_for_wake_word() -> None:
                         if os.path.exists(question_file):
                             os.remove(question_file)
                 else:
-                    # Pregunta incluida en el mismo chunk, re-transcribir con modelo mejor
-                    log("Pregunta en mismo chunk, re-transcribiendo con large-v3-turbo...")
-                    question_text = transcribe(chunk_file, model=WHISPER_MODEL_QUERY)
-                    question_text = extract_question(question_text)
-                    log(f"  [re-transcripcion] '{question_text}'")
+                    # Pregunta incluida en el mismo chunk — grabar continuacion y concatenar
+                    log(f"Grabando continuacion ({CONTINUATION_SECS}s)...")
+                    cont_file = tempfile.mktemp(suffix=".wav")
+                    full_file = tempfile.mktemp(suffix=".wav")
+                    try:
+                        record_wav(cont_file, CONTINUATION_SECS)
+                        concat_wav(chunk_file, cont_file, full_file)
+                        log("Re-transcribiendo con large-v3-turbo...")
+                        question_text = transcribe(full_file, model=WHISPER_MODEL_QUERY)
+                        question_text = extract_question(question_text)
+                        log(f"  [re-transcripcion] '{question_text}'")
+                    finally:
+                        for f in (cont_file, full_file):
+                            if os.path.exists(f):
+                                os.remove(f)
 
                 if question_text:
                     log(f"Pregunta: {question_text}")

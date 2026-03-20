@@ -34,6 +34,16 @@ Micrófono → whisper small (GPU 1, wake word)
 
 **Optimización:** Streaming LLM→TTS — empieza a hablar en cuanto termina la primera oración, sin esperar la respuesta completa.
 
+## Configuración del kernel
+
+Parámetro añadido a `/boot/firmware/cmdline.txt`:
+
+```
+amdgpu.num_kcq=0
+```
+
+Desactiva los async compute rings de amdgpu. Necesario porque ambas GPUs corren a PCIe x1 Gen1 (el multiplexor ASM1184e limita el ancho de banda) — los compute rings tienen timeouts en GPU 1 sin este parámetro, causando kernel panics repetidos.
+
 ## Índice de documentación
 
 - [01 - Conectividad de red](docs/01-red.md)
