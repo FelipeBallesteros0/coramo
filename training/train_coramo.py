@@ -445,6 +445,12 @@ def main():
         total_length = 32000
     log.info(f"[config] total_length={total_length} samples ({total_length/16000:.2f}s)")
 
+    # ---- Descargar modelos base de openWakeWord (melspectrogram.onnx, embedding_model.onnx) ----
+    log.info("[oww] Descargando modelos base de openWakeWord (melspectrogram, embedding)...")
+    from openwakeword.utils import download_models
+    download_models([])  # descarga solo melspectrogram + embedding, sin wake word models
+    log.info("[oww] Modelos base listos.")
+
     # ---- PASO 5: Augmentar y calcular features ----
     rir_paths = [str(p) for p in Path(rir_dir).glob("*.wav")]
     bg_paths  = [str(p) for p in Path(bg_dir).glob("*.wav")]
