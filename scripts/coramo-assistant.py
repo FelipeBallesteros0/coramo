@@ -17,6 +17,8 @@ import wave
 import urllib.request
 import signal
 import atexit
+import collections
+import difflib
 import numpy as np
 import concurrent.futures
 from silero_vad import load_silero_vad, VADIterator
@@ -59,9 +61,10 @@ LLAMA_URL  = f"http://{LLAMA_HOST}:{LLAMA_PORT}"
 WAKE_WORDS = ["coramo", "hola coramo", "hey coramo", "oye coramo"]
 
 # -- openWakeWord ------------------------------------------------------------
-OWW_MODEL_PATH  = os.path.expanduser("~/coramo/models/coramo.onnx")
-OWW_THRESHOLD   = 0.20   # score minimo para activacion (calibrado con voz real: max 0.351)
-OWW_CHUNK_SAMPLES = 1280  # 80ms a 16kHz (requerido por openWakeWord)
+OWW_MODEL_PATH    = os.path.expanduser("~/coramo/models/coramo.onnx")
+OWW_THRESHOLD     = 0.5    # score minimo para primera etapa (OWW)
+OWW_CHUNK_SAMPLES = 1280   # 80ms a 16kHz (requerido por openWakeWord)
+OWW_BUFFER_CHUNKS = 20     # buffer de audio para confirmacion (~1.6s)
 
 # -- Audio settings ----------------------------------------------------------
 SAMPLE_RATE        = 16000
@@ -544,9 +547,32 @@ def speak(text: str) -> None:
                 os.remove(f)
 
 
+def _confirm_wake_word(audio_buffer: collections.deque) -> bool:
+    """Etapa 2: confirma con Whisper que el buffer contiene 'coramo'."""
+    samples = np.concatenate(list(audio_buffer))
+    confirm_file = tempfile.mktemp(suffix=".wav")
+    try:
+        with wave.open(confirm_file, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(SAMPLE_RATE)
+            wf.writeframes(samples.tobytes())
+        text = transcribe(confirm_file, model=WHISPER_MODEL_WAKE).lower().strip()
+        log(f"  [oww confirm] whisper='{text}'")
+        best = max(
+            (difflib.SequenceMatcher(None, text, w).ratio() for w in WAKE_WORDS),
+            default=0.0,
+        )
+        return best >= 0.5 or any(w in text for w in WAKE_WORDS)
+    finally:
+        if os.path.exists(confirm_file):
+            os.remove(confirm_file)
+
+
 def listen_for_wake_word() -> None:
     log("Coramo escuchando... (di 'coramo' para activar)")
     chunk_bytes = OWW_CHUNK_SAMPLES * 2  # int16 = 2 bytes por muestra
+    audio_buf   = collections.deque(maxlen=OWW_BUFFER_CHUNKS)
 
     def _start_arecord():
         return subprocess.Popen([
@@ -569,11 +595,16 @@ def listen_for_wake_word() -> None:
                 continue
 
             audio_chunk = np.frombuffer(raw, dtype=np.int16)
+            audio_buf.append(audio_chunk)
             scores = _oww.predict(audio_chunk)
             score  = scores.get("coramo", 0.0)
 
             if score >= OWW_THRESHOLD:
-                log(f"Wake word detectada! score={score:.3f}")
+                log(f"  [oww] score={score:.3f} — confirmando con whisper...")
+                if not _confirm_wake_word(audio_buf):
+                    log("  [oww] falso positivo descartado")
+                    continue
+                log("Wake word confirmada!")
                 proc.terminate(); proc.wait()
 
                 speak("Dime")
