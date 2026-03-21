@@ -83,6 +83,7 @@ amdgpu.num_kcq=0 amdgpu.lockup_timeout=0
 - [x] LLM Qwen3-8B con GPU (llama-server)
 - [x] Piper TTS en español
 - [x] Function calling → control de servo via Arduino Mega
+- [x] Órdenes complejas de servo: barrer (ida/vuelta N veces), oscilar (continuo), detener
 - [x] Silero VAD para detección de fin de habla (reemplaza grabaciones fijas)
 - [x] Wake word mejorada: whisper `--prompt "Coramo,"` + fuzzy matching (difflib, ratio ≥ 0.75)
 - [x] amdgpu.lockup_timeout=0 para prevenir kernel panic por ring gfx timeout en GPU 0
