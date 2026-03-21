@@ -110,6 +110,25 @@ def start_llm_server() -> None:
     sys.exit(1)
 
 
+def warmup_llm_cache() -> None:
+    """Pre-calienta el KV cache con el system prompt para que la primera pregunta sea mas rapida."""
+    try:
+        payload = json.dumps({
+            "messages": [{"role": "system", "content": SYSTEM_MSG}],
+            "max_tokens": 1,
+            "stream": False,
+        }).encode()
+        req = urllib.request.Request(
+            f"{LLAMA_URL}/v1/chat/completions",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+        )
+        urllib.request.urlopen(req, timeout=60)
+        log("KV cache pre-calentado.")
+    except Exception as e:
+        log(f"  [llm] warmup fallido (no critico): {e}")
+
+
 def stop_llm_server() -> None:
     if server_proc and server_proc.poll() is None:
         server_proc.terminate()
@@ -233,6 +252,23 @@ def _stream_speak(resp) -> None:
         speak(sentence_buf.strip())
 
 
+def _speak_sentences(text: str) -> None:
+    """Habla un texto ya completo dividiendolo en oraciones (sin re-peticion al LLM)."""
+    sentence_end = re.compile(r"[.!?…]+\s*")
+    buf = text.strip()
+    while buf:
+        match = sentence_end.search(buf)
+        if match:
+            sentence = buf[:match.end()].strip()
+            buf = buf[match.end():]
+            if sentence:
+                log(f"  [speak] '{sentence[:60]}'")
+                speak(sentence)
+        else:
+            speak(buf)
+            break
+
+
 def ask_llm(question: str) -> None:
     """Consulta el LLM con streaming. Habla cada oracion en cuanto esta lista."""
     messages = [
@@ -259,10 +295,10 @@ def ask_llm(question: str) -> None:
         resp = _llm_request(messages, stream=True)
         _stream_speak(resp)
     else:
-        # Respuesta normal — re-pedir en streaming para hablar mientras genera
-        log("  [llm] re-enviando en streaming...")
-        resp = _llm_request(messages, stream=True)
-        _stream_speak(resp)
+        # Respuesta normal — usar el contenido ya obtenido, sin segunda peticion
+        content = msg.get("content", "").strip()
+        if content:
+            _speak_sentences(content)
 
 
 def concat_wav(file1: str, file2: str, output: str) -> None:
@@ -532,4 +568,5 @@ if __name__ == "__main__":
         log("ADVERTENCIA: Arduino no disponible, function calling desactivado.")
 
     start_llm_server()
+    warmup_llm_cache()
     listen_for_wake_word()
