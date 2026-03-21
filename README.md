@@ -30,7 +30,11 @@ Micrófono → whisper small (GPU 1, wake word)
 
 **Wake words:** "coramo", "hola coramo", "hey coramo", "oye coramo"
 
-**Ejemplo:** *"coramo pon el servo a 90 grados"* → mueve servo físicamente y confirma en voz.
+**Ejemplos:**
+- *"coramo pon el servo a 90 grados"* → mueve a ángulo fijo
+- *"coramo mueve el motor entre 0 y 180 grados 3 veces"* → barrido ida/vuelta
+- *"coramo oscila el motor lentamente"* → oscilación continua
+- *"coramo detén el motor"* → para cualquier movimiento
 
 **Optimizaciones de latencia:**
 - Streaming LLM→TTS — empieza a hablar en cuanto termina la primera oración, sin esperar la respuesta completa.
