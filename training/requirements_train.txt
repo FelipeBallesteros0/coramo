@@ -2,8 +2,8 @@
 # IMPORTANTE: Requiere Python 3.10 (no 3.11, no 3.12)
 # Ver GUIA_ENTRENAMIENTO.md para instrucciones de instalacion
 
-# openWakeWord base (sin [full] para controlar versiones exactas)
-openwakeword
+# openWakeWord desde GitHub (el paquete pip v0.4.0 no tiene augment_clips)
+git+https://github.com/dscripka/openWakeWord.git
 
 # TensorFlow stack (versiones exactas compatibles entre si)
 tensorflow-cpu==2.8.1
