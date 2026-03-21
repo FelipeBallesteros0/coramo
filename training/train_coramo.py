@@ -31,6 +31,17 @@ import numpy as np
 import torch
 import scipy.io.wavfile
 
+# Compatibilidad con torchaudio 2.x: restaura torchaudio.info eliminado en 2.0
+import torchaudio as _torchaudio
+if not hasattr(_torchaudio, "info"):
+    import soundfile as _sf
+    from collections import namedtuple as _nt
+    _AudioInfo = _nt("AudioInfo", ["sample_rate", "num_frames", "num_channels", "bits_per_sample", "encoding"])
+    def _ta_info(path):
+        i = _sf.info(str(path))
+        return _AudioInfo(i.samplerate, i.frames, i.channels, 16, "PCM_S")
+    _torchaudio.info = _ta_info
+
 # ---------------------------------------------------------------------------
 # Configurar logging
 # ---------------------------------------------------------------------------
