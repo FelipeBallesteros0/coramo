@@ -376,6 +376,21 @@ def main():
     log.info(f"  Steps        : {args.steps}")
     log.info("")
 
+    # ---- PASO 0: Descargar modelos base de openWakeWord ----
+    # melspectrogram.onnx y embedding_model.onnx son necesarios para calcular features
+    from openwakeword.utils import download_models
+    import openwakeword
+    models_res_dir = os.path.join(
+        os.path.dirname(openwakeword.__file__), "resources", "models"
+    )
+    melspec_path = os.path.join(models_res_dir, "melspectrogram.onnx")
+    if not os.path.exists(melspec_path):
+        log.info("[oww] Descargando modelos base (melspectrogram + embedding)...")
+        download_models([])
+        log.info("[oww] Modelos base listos.")
+    else:
+        log.info("[oww] Modelos base ya existen.")
+
     # ---- PASO 1: Descargar validation features de HuggingFace ----
     if not os.path.exists(val_fp_npy):
         log.info("[hf] Descargando validation_set_features.npy de HuggingFace (~176 MB)...")
@@ -444,12 +459,6 @@ def main():
     elif abs(total_length - 32000) <= 4000:
         total_length = 32000
     log.info(f"[config] total_length={total_length} samples ({total_length/16000:.2f}s)")
-
-    # ---- Descargar modelos base de openWakeWord (melspectrogram.onnx, embedding_model.onnx) ----
-    log.info("[oww] Descargando modelos base de openWakeWord (melspectrogram, embedding)...")
-    from openwakeword.utils import download_models
-    download_models([])  # descarga solo melspectrogram + embedding, sin wake word models
-    log.info("[oww] Modelos base listos.")
 
     # ---- PASO 5: Augmentar y calcular features ----
     rir_paths = [str(p) for p in Path(rir_dir).glob("*.wav")]
