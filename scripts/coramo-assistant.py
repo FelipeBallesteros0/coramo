@@ -13,9 +13,12 @@ import tempfile
 import time
 import re
 import json
+import wave
 import urllib.request
 import signal
 import atexit
+import numpy as np
+from silero_vad import load_silero_vad, VADIterator
 sys.path.insert(0, os.path.dirname(__file__))
 import arduino
 
@@ -57,11 +60,25 @@ WAKE_WORDS = ["coramo", "hola coramo", "hey coramo", "oye coramo"]
 SAMPLE_RATE        = 16000
 CHANNELS           = 1
 CHUNK_SECONDS      = 6    # chunk para wake word detection
-CONTINUATION_SECS  = 8    # segundos extra grabados tras detectar wake word en el chunk
-QUESTION_SECONDS   = 14   # cuando wake word llega sola sin pregunta
+
+# -- Silero VAD settings -------------------------------------------------------
+VAD_SILENCE_MS     = 1000   # ms de silencio para considerar fin de habla
+VAD_MAX_SECS       = 15     # timeout maximo de seguridad
+VAD_MIN_SPEECH_MS  = 200    # habla minima detectada antes de permitir corte
+VAD_CHUNK_SAMPLES  = 512    # muestras por chunk (32ms a 16kHz, requerido por silero)
 
 # -- Global server process ---------------------------------------------------
 server_proc = None
+
+# -- Silero VAD (inicializado una vez, corre en CPU) --------------------------
+_vad_model = load_silero_vad()
+_vad = VADIterator(
+    _vad_model,
+    threshold=0.5,
+    sampling_rate=SAMPLE_RATE,
+    min_silence_duration_ms=VAD_SILENCE_MS,
+    speech_pad_ms=100,
+)
 
 
 def start_llm_server() -> None:
@@ -233,6 +250,62 @@ def concat_wav(file1: str, file2: str, output: str) -> None:
         out.writeframes(data)
 
 
+def record_until_silence(filename: str) -> float:
+    """Graba hasta detectar silencio con Silero VAD. Retorna duracion en segundos."""
+    _vad.reset_states()
+    chunk_bytes = VAD_CHUNK_SAMPLES * 2  # int16 = 2 bytes por muestra
+    frames = []
+    speech_detected = False
+    speech_ms = 0.0
+    elapsed_ms = 0.0
+    max_ms = VAD_MAX_SECS * 1000
+
+    proc = subprocess.Popen([
+        "arecord", "-q",
+        "-D", AUDIO_DEVICE,
+        "-f", "S16_LE",
+        "-r", str(SAMPLE_RATE),
+        "-c", str(CHANNELS),
+    ], stdout=subprocess.PIPE)
+
+    try:
+        while elapsed_ms < max_ms:
+            raw = proc.stdout.read(chunk_bytes)
+            if len(raw) < chunk_bytes:
+                break
+            frames.append(raw)
+            elapsed_ms += 32  # 512 samples / 16000 * 1000
+
+            samples = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
+            result = _vad(samples)
+
+            if result:
+                if "start" in result:
+                    speech_detected = True
+                    log("  [vad] habla detectada")
+                if "end" in result and speech_detected:
+                    speech_ms += 32
+                    if speech_ms >= VAD_MIN_SPEECH_MS:
+                        log(f"  [vad] silencio detectado tras {elapsed_ms:.0f}ms")
+                        break
+
+            if speech_detected and (not result or "end" not in result):
+                speech_ms += 32
+    finally:
+        proc.terminate()
+        proc.wait()
+
+    with wave.open(filename, "wb") as wf:
+        wf.setnchannels(CHANNELS)
+        wf.setsampwidth(2)
+        wf.setframerate(SAMPLE_RATE)
+        wf.writeframes(b"".join(frames))
+
+    duration = elapsed_ms / 1000.0
+    log(f"  [vad] grabados {duration:.1f}s (max={VAD_MAX_SECS}s)")
+    return duration
+
+
 def record_wav(filename: str, seconds: int) -> None:
     subprocess.run([
         "arecord", "-q",
@@ -330,8 +403,8 @@ def listen_for_wake_word() -> None:
                     speak("Dime")
                     question_file = tempfile.mktemp(suffix=".wav")
                     try:
-                        log(f"Escuchando pregunta ({QUESTION_SECONDS}s)...")
-                        record_wav(question_file, QUESTION_SECONDS)
+                        log("Escuchando pregunta (VAD)...")
+                        record_until_silence(question_file)
                         log("Transcribiendo pregunta...")
                         question_text = transcribe(question_file, model=WHISPER_MODEL_QUERY)
                         log(f"  [transcripcion] '{question_text}'")
@@ -342,11 +415,11 @@ def listen_for_wake_word() -> None:
                             os.remove(question_file)
                 else:
                     # Pregunta incluida en el mismo chunk — grabar continuacion y concatenar
-                    log(f"Grabando continuacion ({CONTINUATION_SECS}s)...")
+                    log("Grabando continuacion (VAD)...")
                     cont_file = tempfile.mktemp(suffix=".wav")
                     full_file = tempfile.mktemp(suffix=".wav")
                     try:
-                        record_wav(cont_file, CONTINUATION_SECS)
+                        record_until_silence(cont_file)
                         concat_wav(chunk_file, cont_file, full_file)
                         log("Re-transcribiendo con large-v3-turbo...")
                         question_text = transcribe(full_file, model=WHISPER_MODEL_QUERY)
