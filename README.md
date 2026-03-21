@@ -36,6 +36,8 @@ Micrófono → whisper small (GPU 1, wake word)
 - Streaming LLM→TTS — empieza a hablar en cuanto termina la primera oración, sin esperar la respuesta completa.
 - Silero VAD — corta la grabación en cuanto el usuario deja de hablar (~1s de silencio), eliminando las esperas fijas de 8–14s.
 - Overlap transcripción+grabación — mientras se graba la continuación (VAD, CPU), la transcripción del chunk inicial (GPU 1) corre en paralelo via `ThreadPoolExecutor`, reduciendo ~1-3s de latencia.
+- KV cache warmup — al arrancar, el system prompt se pre-calienta en el KV cache. Las peticiones al LLM solo procesan los tokens del usuario.
+- Eliminado double request — la respuesta LLM sin tool_calls se habla directamente sin re-pedir al servidor, ahorrando ~1-2s por interacción.
 
 ## Configuración del kernel
 
@@ -84,3 +86,5 @@ amdgpu.num_kcq=0 amdgpu.lockup_timeout=0
 - [x] Silero VAD para detección de fin de habla (reemplaza grabaciones fijas)
 - [x] amdgpu.lockup_timeout=0 para prevenir kernel panic por ring gfx timeout en GPU 0
 - [x] Overlap transcripción+grabación (ThreadPoolExecutor) para reducir latencia
+- [x] KV cache warmup del system prompt al arrancar
+- [x] Eliminado double request LLM en respuestas sin tool_calls
