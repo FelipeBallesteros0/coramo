@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/home/felipe/coramo-env/bin/python3
 """
 Coramo Voice Assistant
 Pipeline: whisper (GPU 1) -> wake word -> whisper (GPU 1) -> Qwen3-8B (GPU 0) -> Piper TTS
@@ -112,6 +112,19 @@ def stop_llm_server() -> None:
     if server_proc and server_proc.poll() is None:
         server_proc.terminate()
         server_proc.wait()
+
+
+def ensure_llm_server() -> None:
+    """Verifica que llama-server este corriendo. Lo reinicia si murio."""
+    try:
+        urllib.request.urlopen(f"{LLAMA_URL}/health", timeout=2)
+        return  # esta vivo
+    except Exception:
+        pass
+    log("  [llm] servidor caido, reiniciando...")
+    stop_llm_server()
+    time.sleep(1)
+    start_llm_server()
 
 
 TOOLS = [
@@ -266,6 +279,7 @@ def record_until_silence(filename: str) -> float:
         "-f", "S16_LE",
         "-r", str(SAMPLE_RATE),
         "-c", str(CHANNELS),
+        "-t", "raw",   # sin header WAV — datos PCM puros para el VAD
     ], stdout=subprocess.PIPE)
 
     try:
@@ -341,13 +355,20 @@ def contains_wake_word(text: str) -> bool:
 
 
 def extract_question(text: str) -> str:
-    """Extrae el texto que viene despues de la wake word."""
+    """Extrae el texto entre la primera y segunda wake word (si hay repeticion)."""
     normalized = re.sub(r"[^\w\s]", "", text.lower())
     for ww in sorted(WAKE_WORDS, key=len, reverse=True):  # mas largo primero
         if ww in normalized:
             idx = normalized.index(ww) + len(ww)
-            remainder = text[idx:].strip(" ,.-\n")
-            return remainder
+            remainder_norm = normalized[idx:].strip()
+            remainder_text = text[idx:].strip(" ,.-\n")
+            # Si hay una segunda wake word, cortar ahi
+            for ww2 in WAKE_WORDS:
+                if ww2 in remainder_norm:
+                    cut = remainder_norm.index(ww2)
+                    remainder_text = remainder_text[:cut].strip(" ,.-\n")
+                    break
+            return remainder_text
     return ""
 
 
@@ -432,6 +453,7 @@ def listen_for_wake_word() -> None:
 
                 if question_text:
                     log(f"Pregunta: {question_text}")
+                    ensure_llm_server()
                     log("Enviando al LLM...")
                     try:
                         ask_llm(question_text)
