@@ -388,22 +388,35 @@ def transcribe(audio_file: str, model: str = None) -> str:
     if model is None:
         model = WHISPER_MODEL_WAKE
     env = {**os.environ, **WHISPER_GPU_ENV}
-    result = subprocess.run([
+    cmd = [
         WHISPER_BIN,
         "-m", model,
         "-f", audio_file,
         "-l", "es",
         "--no-prints",
         "-nt",
-    ], capture_output=True, text=True, env=env)
+    ]
+    # Para el modelo de wake word, sesgar hacia "Coramo" via prompt inicial
+    if model == WHISPER_MODEL_WAKE:
+        cmd += ["--prompt", "Coramo,"]
+    result = subprocess.run(cmd, capture_output=True, text=True, env=env)
     if result.returncode != 0:
         log(f"  [whisper error] rc={result.returncode} stderr={result.stderr[:200]}")
     return result.stdout.strip()
 
 
 def contains_wake_word(text: str) -> bool:
+    import difflib
     normalized = re.sub(r"[^\w\s]", "", text.lower().strip())
-    return any(ww in normalized for ww in WAKE_WORDS)
+    # Coincidencia exacta
+    if any(ww in normalized for ww in WAKE_WORDS):
+        return True
+    # Coincidencia fuzzy: comparar cada palabra del texto con "coramo"
+    words = normalized.split()
+    for word in words:
+        if len(word) >= 4 and difflib.SequenceMatcher(None, word, "coramo").ratio() >= 0.75:
+            return True
+    return False
 
 
 def extract_question(text: str) -> str:
