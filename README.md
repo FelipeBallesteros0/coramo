@@ -35,6 +35,7 @@ Micrófono → whisper small (GPU 1, wake word)
 **Optimizaciones de latencia:**
 - Streaming LLM→TTS — empieza a hablar en cuanto termina la primera oración, sin esperar la respuesta completa.
 - Silero VAD — corta la grabación en cuanto el usuario deja de hablar (~1s de silencio), eliminando las esperas fijas de 8–14s.
+- Overlap transcripción+grabación — mientras se graba la continuación (VAD, CPU), la transcripción del chunk inicial (GPU 1) corre en paralelo via `ThreadPoolExecutor`, reduciendo ~1-3s de latencia.
 
 ## Configuración del kernel
 
@@ -82,3 +83,4 @@ amdgpu.num_kcq=0 amdgpu.lockup_timeout=0
 - [x] Function calling → control de servo via Arduino Mega
 - [x] Silero VAD para detección de fin de habla (reemplaza grabaciones fijas)
 - [x] amdgpu.lockup_timeout=0 para prevenir kernel panic por ring gfx timeout en GPU 0
+- [x] Overlap transcripción+grabación (ThreadPoolExecutor) para reducir latencia
