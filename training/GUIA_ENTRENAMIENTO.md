@@ -12,7 +12,7 @@ PC porque el RPi5 no tiene suficiente potencia de fuente para la carga de CPU so
 ## Requisitos previos
 
 - Windows 10/11 con WSL2 instalado (Ubuntu 22.04 o 24.04)
-- Python 3.10 o superior (dentro de WSL2)
+- **Python 3.10 exactamente** — las dependencias de openWakeWord no son compatibles con 3.11/3.12
 - ~5 GB de espacio libre
 - Conexión a internet (para descargar datasets de HuggingFace)
 
@@ -36,10 +36,20 @@ Si ya tienes WSL2, abre "Ubuntu" desde el menú inicio.
 
 ---
 
-## Paso 2: Instalar dependencias del sistema en WSL2
+## Paso 2: Instalar Python 3.10 y dependencias del sistema en WSL2
+
+Ubuntu 24.04 viene con Python 3.12 por defecto, pero openWakeWord necesita Python 3.10.
+Instala ambas cosas con:
 
 ```bash
-sudo apt update && sudo apt install -y python3-pip python3-venv espeak-ng git
+sudo apt update
+sudo apt install -y python3.10 python3.10-venv python3.10-dev espeak-ng git
+```
+
+Verifica que quedó instalado:
+
+```bash
+python3.10 --version   # debe mostrar Python 3.10.x
 ```
 
 ---
@@ -56,17 +66,17 @@ cd coramo
 
 ---
 
-## Paso 4: Crear entorno virtual e instalar dependencias
+## Paso 4: Crear entorno virtual con Python 3.10 e instalar dependencias
 
 ```bash
-python3 -m venv ~/train-env
+python3.10 -m venv ~/train-env
 source ~/train-env/bin/activate
 
 pip install --upgrade pip
 pip install -r training/requirements_train.txt
 ```
 
-> La instalación puede tardar 5-10 minutos (descarga torch, tensorflow, etc.)
+> La instalación puede tardar 10-15 minutos (descarga torch, tensorflow, etc.)
 
 ---
 

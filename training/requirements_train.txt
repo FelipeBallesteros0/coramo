@@ -1,23 +1,52 @@
 # Dependencias para entrenar el modelo openWakeWord "coramo"
-# Instalar con: pip install -r requirements_train.txt
+# IMPORTANTE: Requiere Python 3.10 (no 3.11, no 3.12)
+# Ver GUIA_ENTRENAMIENTO.md para instrucciones de instalacion
 
-# openWakeWord con soporte de entrenamiento completo
-openwakeword[full]
+# openWakeWord base (sin [full] para controlar versiones exactas)
+openwakeword
 
-# TFLite runtime para exportar el modelo final
-ai-edge-litert
+# TensorFlow stack (versiones exactas compatibles entre si)
+tensorflow-cpu==2.8.1
+tensorflow_probability==0.16.0
+protobuf>=3.20,<4
+onnx==1.14.0
+onnx-tf==1.10.0
+
+# PyTorch stack (pinned para Python 3.10)
+torch==1.13.1
+torchaudio==0.13.1
+torchinfo>=1.8.0,<2
+torchmetrics>=0.11.4,<1
+torch-audiomentations>=0.11.0,<1
+
+# Audio
+speechbrain>=0.5.14,<1
+audiomentations>=0.30.0,<1
+librosa
+soundfile
+acoustics>=0.2.6,<1
+
+# scipy < 1.15 requerido por acoustics (sph_harm removido en 1.15)
+scipy==1.14.1
+
+# scikit-learn
+scikit-learn>=1,<2
 
 # Piper TTS para generacion de samples sinteticos
 piper-tts
 
-# Descarga de datasets desde HuggingFace
-datasets<4
+# HuggingFace para descarga de datasets
+datasets>=2.14.4,<3
 huggingface_hub
-soundfile
 
-# Audio y procesamiento
-librosa
-soundfile
-acoustics
-scipy
+# ONNX runtime para inferencia
+onnxruntime>=1.10.0,<2
+
+# TFLite para exportar modelo final
+ai-edge-litert>=2.0.2,<3
+
+# Otros
 numpy
+tqdm
+pyyaml
+requests
