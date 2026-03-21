@@ -18,5 +18,6 @@ soundfile
 # Audio y procesamiento
 librosa
 soundfile
+acoustics
 scipy
 numpy
