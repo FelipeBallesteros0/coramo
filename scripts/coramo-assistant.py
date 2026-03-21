@@ -62,10 +62,11 @@ CHANNELS           = 1
 CHUNK_SECONDS      = 6    # chunk para wake word detection
 
 # -- Silero VAD settings -------------------------------------------------------
-VAD_SILENCE_MS     = 1000   # ms de silencio para considerar fin de habla
-VAD_MAX_SECS       = 15     # timeout maximo de seguridad
-VAD_MIN_SPEECH_MS  = 200    # habla minima detectada antes de permitir corte
-VAD_CHUNK_SAMPLES  = 512    # muestras por chunk (32ms a 16kHz, requerido por silero)
+VAD_SILENCE_MS          = 1000   # ms de silencio para considerar fin de habla
+VAD_MAX_SECS            = 15     # timeout maximo de seguridad
+VAD_MIN_SPEECH_MS       = 200    # habla minima detectada antes de permitir corte
+VAD_CHUNK_SAMPLES       = 512    # muestras por chunk (32ms a 16kHz, requerido por silero)
+VAD_NO_SPEECH_TIMEOUT_MS = 3000  # si no hay habla en los primeros 3s, el usuario ya termino
 
 # -- Global server process ---------------------------------------------------
 server_proc = None
@@ -168,19 +169,30 @@ def call_tool(name: str, args: dict) -> str:
 
 
 def _llm_request(messages: list, stream: bool, extra: dict = None) -> dict | str:
-    """Hace una peticion a llama-server. Si stream=False devuelve dict, si stream=True devuelve el objeto response."""
+    """Hace una peticion a llama-server. Reintenta una vez si el servidor cae (503)."""
     payload = {"messages": messages, "temperature": 0.7, "max_tokens": 120, "stream": stream}
     if extra:
         payload.update(extra)
-    req = urllib.request.Request(
-        f"{LLAMA_URL}/v1/chat/completions",
-        data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
-    )
-    resp = urllib.request.urlopen(req, timeout=120)
-    if not stream:
-        return json.loads(resp.read())
-    return resp
+    data_bytes = json.dumps(payload).encode()
+
+    for attempt in range(2):
+        try:
+            req = urllib.request.Request(
+                f"{LLAMA_URL}/v1/chat/completions",
+                data=data_bytes,
+                headers={"Content-Type": "application/json"},
+            )
+            resp = urllib.request.urlopen(req, timeout=120)
+            if not stream:
+                return json.loads(resp.read())
+            return resp
+        except Exception as e:
+            if attempt == 0:
+                log(f"  [llm] reintentando tras error: {e}")
+                ensure_llm_server()
+                time.sleep(1)
+            else:
+                raise
 
 
 def _stream_speak(resp) -> None:
@@ -297,14 +309,17 @@ def record_until_silence(filename: str) -> float:
                 if "start" in result:
                     speech_detected = True
                     log("  [vad] habla detectada")
-                if "end" in result and speech_detected:
-                    speech_ms += 32
-                    if speech_ms >= VAD_MIN_SPEECH_MS:
-                        log(f"  [vad] silencio detectado tras {elapsed_ms:.0f}ms")
-                        break
+                if "end" in result and speech_detected and speech_ms >= VAD_MIN_SPEECH_MS:
+                    log(f"  [vad] silencio detectado tras {elapsed_ms:.0f}ms")
+                    break
 
-            if speech_detected and (not result or "end" not in result):
+            if speech_detected:
                 speech_ms += 32
+
+            # Si no hay habla en los primeros N ms, el usuario ya termino en el chunk anterior
+            if not speech_detected and elapsed_ms >= VAD_NO_SPEECH_TIMEOUT_MS:
+                log(f"  [vad] sin habla en {elapsed_ms:.0f}ms, fin de pregunta")
+                break
     finally:
         proc.terminate()
         proc.wait()
