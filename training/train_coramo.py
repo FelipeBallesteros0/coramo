@@ -31,16 +31,29 @@ import numpy as np
 import torch
 import scipy.io.wavfile
 
-# Compatibilidad con torchaudio 2.x: restaura torchaudio.info eliminado en 2.0
+# Compatibilidad con torchaudio 2.x: torchcodec falla con WAV simples — usar soundfile
 import torchaudio as _torchaudio
-if not hasattr(_torchaudio, "info"):
-    import soundfile as _sf
-    from collections import namedtuple as _nt
-    _AudioInfo = _nt("AudioInfo", ["sample_rate", "num_frames", "num_channels", "bits_per_sample", "encoding"])
-    def _ta_info(path):
-        i = _sf.info(str(path))
-        return _AudioInfo(i.samplerate, i.frames, i.channels, 16, "PCM_S")
-    _torchaudio.info = _ta_info
+import soundfile as _sf
+import torch as _torch
+from collections import namedtuple as _nt
+
+_AudioInfo = _nt("AudioInfo", ["sample_rate", "num_frames", "num_channels", "bits_per_sample", "encoding"])
+
+def _ta_info(path):
+    i = _sf.info(str(path))
+    return _AudioInfo(i.samplerate, i.frames, i.channels, 16, "PCM_S")
+
+def _ta_load(path, frame_offset=0, num_frames=-1, normalize=True, channels_first=True, **kwargs):
+    data, sr = _sf.read(str(path), dtype="float32", always_2d=True)
+    if frame_offset > 0:
+        data = data[frame_offset:]
+    if num_frames > 0:
+        data = data[:num_frames]
+    t = _torch.from_numpy(data.T if channels_first else data)
+    return t, sr
+
+_torchaudio.info = _ta_info
+_torchaudio.load = _ta_load
 
 # ---------------------------------------------------------------------------
 # Configurar logging
