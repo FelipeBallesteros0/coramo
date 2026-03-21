@@ -38,13 +38,14 @@ Micrófono → whisper small (GPU 1, wake word)
 
 ## Configuración del kernel
 
-Parámetro añadido a `/boot/firmware/cmdline.txt`:
+Parámetros añadidos a `/boot/firmware/cmdline.txt`:
 
 ```
-amdgpu.num_kcq=0
+amdgpu.num_kcq=0 amdgpu.lockup_timeout=0
 ```
 
-Desactiva los async compute rings de amdgpu. Necesario porque ambas GPUs corren a PCIe x1 Gen1 (el multiplexor ASM1184e limita el ancho de banda) — los compute rings tienen timeouts en GPU 1 sin este parámetro, causando kernel panics repetidos.
+- `amdgpu.num_kcq=0` — desactiva los async compute rings. Necesario porque las GPUs corren a PCIe x1 (multiplexor ASM1184e) — los compute rings tienen timeouts en GPU 1 sin este parámetro.
+- `amdgpu.lockup_timeout=0` — desactiva el detector de lockup del ring `gfx`. Sin esto, el ring `gfx` de GPU 0 hace timeout durante inferencia LLM, el BACO reset falla al restaurar VRAM por PCIe lento (`recover vram bo from shadow failed, r=-110`) y el sistema se cuelga.
 
 ## Índice de documentación
 
@@ -80,3 +81,4 @@ Desactiva los async compute rings de amdgpu. Necesario porque ambas GPUs corren 
 - [x] Piper TTS en español
 - [x] Function calling → control de servo via Arduino Mega
 - [x] Silero VAD para detección de fin de habla (reemplaza grabaciones fijas)
+- [x] amdgpu.lockup_timeout=0 para prevenir kernel panic por ring gfx timeout en GPU 0
