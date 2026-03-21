@@ -18,6 +18,7 @@ import urllib.request
 import signal
 import atexit
 import numpy as np
+import concurrent.futures
 from silero_vad import load_silero_vad, VADIterator
 sys.path.insert(0, os.path.dirname(__file__))
 import arduino
@@ -450,21 +451,34 @@ def listen_for_wake_word() -> None:
                         if os.path.exists(question_file):
                             os.remove(question_file)
                 else:
-                    # Pregunta incluida en el mismo chunk — grabar continuacion y concatenar
-                    log("Grabando continuacion (VAD)...")
+                    # Pregunta en el mismo chunk — overlap: transcribir chunk
+                    # mientras se graba la continuacion en paralelo
+                    log("Grabando continuacion + transcribiendo chunk en paralelo...")
                     cont_file = tempfile.mktemp(suffix=".wav")
-                    full_file = tempfile.mktemp(suffix=".wav")
                     try:
-                        record_until_silence(cont_file)
-                        concat_wav(chunk_file, cont_file, full_file)
-                        log("Re-transcribiendo con large-v3-turbo...")
-                        question_text = transcribe(full_file, model=WHISPER_MODEL_QUERY)
-                        question_text = extract_question(question_text)
+                        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as ex:
+                            # Transcribir chunk (6s ya grabado) en background (GPU 1)
+                            future_chunk = ex.submit(transcribe, chunk_file, WHISPER_MODEL_QUERY)
+                            log("  [overlap] transcripcion chunk iniciada")
+                            # Grabar continuacion en main thread (VAD en CPU, sin conflicto GPU)
+                            cont_duration = record_until_silence(cont_file)
+                        # Al salir del with: ambas operaciones terminadas
+                        chunk_text = future_chunk.result()
+                        log(f"  [overlap] chunk: '{chunk_text[:80]}'")
+
+                        # Si la continuacion tiene contenido, transcribirla y combinar
+                        cont_text = ""
+                        if cont_duration > 0.5:
+                            log("Re-transcribiendo continuacion...")
+                            cont_text = transcribe(cont_file, model=WHISPER_MODEL_QUERY)
+                            log(f"  [overlap] cont: '{cont_text[:80]}'")
+
+                        full_text = (chunk_text + " " + cont_text).strip()
+                        question_text = extract_question(full_text)
                         log(f"  [re-transcripcion] '{question_text}'")
                     finally:
-                        for f in (cont_file, full_file):
-                            if os.path.exists(f):
-                                os.remove(f)
+                        if os.path.exists(cont_file):
+                            os.remove(cont_file)
 
                 if question_text:
                     log(f"Pregunta: {question_text}")
