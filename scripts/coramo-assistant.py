@@ -153,19 +153,57 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "mover_servo",
-            "description": "Mueve el servo fisico al angulo indicado en grados",
+            "description": "Mueve el servo a un angulo fijo. Usar para: 'pon el motor a X grados', 'mueve a X'.",
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "angulo": {
-                        "type": "integer",
-                        "description": "Angulo del servo en grados, entre 0 y 180",
-                    }
+                    "angulo": {"type": "integer", "description": "Angulo destino en grados (0-180)"},
                 },
                 "required": ["angulo"],
             },
         },
-    }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "barrer_servo",
+            "description": "Mueve el servo de un angulo a otro y de vuelta N veces. Usar para: 'mueve entre X y Y', 'barre X veces', 'va y viene', 'repite el movimiento'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "inicio":       {"type": "integer", "description": "Angulo inicial (0-180)"},
+                    "fin":          {"type": "integer", "description": "Angulo final (0-180)"},
+                    "repeticiones": {"type": "integer", "description": "Numero de barridos ida+vuelta (default 1)"},
+                    "velocidad":    {"type": "integer", "description": "ms por grado: 5=rapido, 15=normal, 50=lento (default 15)"},
+                },
+                "required": ["inicio", "fin"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "oscilar_servo",
+            "description": "Hace que el servo oscile continuamente entre dos angulos hasta que se detenga. Usar para: 'oscila', 'sigue moviendose', 'movimiento continuo'.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "minimo":    {"type": "integer", "description": "Angulo minimo (default 0)"},
+                    "maximo":    {"type": "integer", "description": "Angulo maximo (default 180)"},
+                    "velocidad": {"type": "integer", "description": "ms por grado: 5=rapido, 15=normal, 50=lento (default 15)"},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "detener_servo",
+            "description": "Detiene cualquier movimiento en curso del servo. Usar para: 'para', 'detente', 'stop', 'quieto'.",
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
 ]
 
 SYSTEM_MSG = (
@@ -181,10 +219,42 @@ def call_tool(name: str, args: dict) -> str:
         angulo = args.get("angulo", 90)
         log(f"  [tool] mover_servo({angulo})")
         result = arduino.mover_servo(angulo)
-        log(f"  [tool] respuesta arduino: {result}")
+        log(f"  [tool] respuesta: {result}")
         if result.get("ok"):
-            return f"Servo movido a {result['angulo']} grados correctamente."
-        return f"Error al mover servo: {result.get('error', 'desconocido')}"
+            return f"Servo movido a {result['angulo']} grados."
+        return f"Error: {result.get('error', 'desconocido')}"
+
+    if name == "barrer_servo":
+        ini  = args.get("inicio", 0)
+        fin  = args.get("fin", 180)
+        reps = args.get("repeticiones", 1)
+        vel  = args.get("velocidad", 15)
+        log(f"  [tool] barrer_servo({ini}-{fin}, reps={reps}, vel={vel})")
+        result = arduino.barrer_servo(ini, fin, reps, vel)
+        log(f"  [tool] respuesta: {result}")
+        if result.get("ok"):
+            return f"Barrido completado: {ini} a {fin} grados, {reps} vez/veces."
+        return f"Error en barrido: {result.get('error', 'desconocido')}"
+
+    if name == "oscilar_servo":
+        mn  = args.get("minimo", 0)
+        mx  = args.get("maximo", 180)
+        vel = args.get("velocidad", 15)
+        log(f"  [tool] oscilar_servo({mn}-{mx}, vel={vel})")
+        result = arduino.oscilar_servo(mn, mx, vel)
+        log(f"  [tool] respuesta: {result}")
+        if result.get("ok"):
+            return f"Servo oscilando entre {mn} y {mx} grados."
+        return f"Error: {result.get('error', 'desconocido')}"
+
+    if name == "detener_servo":
+        log("  [tool] detener_servo()")
+        result = arduino.detener_servo()
+        log(f"  [tool] respuesta: {result}")
+        if result.get("ok"):
+            return "Servo detenido."
+        return f"Error: {result.get('error', 'desconocido')}"
+
     return f"Tool desconocida: {name}"
 
 
