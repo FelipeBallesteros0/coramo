@@ -42,6 +42,26 @@ EOF
 
 ### 3. Desactivar power management WiFi
 
+La regla udev se aplica al detectar la interfaz, pero NetworkManager la reactiva
+al conectarse. Solución en dos partes:
+
+**Parte A — NM config** (`/etc/NetworkManager/conf.d/default-wifi-powersave-on.conf`):
+```
+[connection]
+wifi.powersave = 2
+```
+(2 = desactivado, el archivo viene con 3 = activo por defecto en Ubuntu)
+
+**Parte B — NM dispatcher** (agregado en `/etc/NetworkManager/dispatcher.d/10-wifi-route`):
+```bash
+if [ "$IFACE" = "wlx90de80052ea8" ] && [ "$ACTION" = "up" ]; then
+    sleep 2
+    /sbin/iwconfig wlx90de80052ea8 power off   # ← desactiva después que NM conecta
+    ...
+fi
+```
+
+La regla udev sola no alcanza porque NM gana al reconectar:
 ```bash
 sudo tee /etc/udev/rules.d/70-wifi-power.rules << 'EOF'
 ACTION=="add", SUBSYSTEM=="net", KERNEL=="wlan0", RUN+="/sbin/iwconfig wlan0 power off"

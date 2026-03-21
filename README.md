@@ -83,7 +83,7 @@ amdgpu.num_kcq=0 amdgpu.lockup_timeout=0
 
 ## Estado del proyecto
 
-- [x] Conectividad de red con failover WiFi USB
+- [x] Conectividad de red con failover WiFi USB (fix: NM dispatcher desactiva powersave tras reconexión)
 - [x] Alimentación por DC jack sin advertencias
 - [x] Kernel con soporte amdgpu
 - [x] Dos GPU RX 580 operativas
