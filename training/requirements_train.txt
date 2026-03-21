@@ -16,6 +16,7 @@ huggingface_hub
 soundfile
 
 # Audio y procesamiento
+librosa
 soundfile
 scipy
 numpy
