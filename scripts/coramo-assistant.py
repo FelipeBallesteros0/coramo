@@ -60,7 +60,7 @@ WAKE_WORDS = ["coramo", "hola coramo", "hey coramo", "oye coramo"]
 
 # -- openWakeWord ------------------------------------------------------------
 OWW_MODEL_PATH  = os.path.expanduser("~/coramo/models/coramo.onnx")
-OWW_THRESHOLD   = 0.5    # score minimo para activacion (bajar a 0.3 si no detecta)
+OWW_THRESHOLD   = 0.20   # score minimo para activacion (calibrado con voz real: max 0.351)
 OWW_CHUNK_SAMPLES = 1280  # 80ms a 16kHz (requerido por openWakeWord)
 
 # -- Audio settings ----------------------------------------------------------

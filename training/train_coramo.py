@@ -349,6 +349,8 @@ def main():
     parser.add_argument("--skip-generate",  action="store_true",     help="Saltar generacion de samples (si ya existen)")
     parser.add_argument("--skip-augment",   action="store_true",     help="Saltar augmentation (si features ya existen)")
     parser.add_argument("--device",         default="cpu",           help="Dispositivo para features: cpu o cuda (default: cpu)")
+    parser.add_argument("--real-recordings-dir", default=None,
+                        help="Directorio con grabaciones reales del usuario (.wav, 16kHz mono) para mezclar con sinteticos")
     args = parser.parse_args()
 
     # Rutas
@@ -374,6 +376,7 @@ def main():
     log.info(f"  Piper model  : {args.piper_model}")
     log.info(f"  Samples train: {args.n_samples} | val: {args.n_val}")
     log.info(f"  Steps        : {args.steps}")
+    log.info(f"  Real samples : {args.real_recordings_dir or 'ninguno (solo sinteticos)'}")
     log.info("")
 
     # ---- PASO 0: Descargar modelos base de openWakeWord ----
@@ -440,6 +443,28 @@ def main():
         generate_samples_piper(voice, NEGATIVE_PHRASES, neg_test,  args.n_val,     "negative/test")
     else:
         log.info("[piper] Generacion omitida (--skip-generate).")
+
+    # ---- PASO 4b: Copiar grabaciones reales del usuario ----
+    if args.real_recordings_dir:
+        real_dir = os.path.expanduser(args.real_recordings_dir)
+        wavs = sorted([f for f in os.listdir(real_dir) if f.endswith(".wav")])
+        if not wavs:
+            log.warning(f"[real] No se encontraron .wav en {real_dir}, saltando.")
+        else:
+            n_train = int(len(wavs) * 0.8)
+            train_wavs, test_wavs = wavs[:n_train], wavs[n_train:]
+            copied = 0
+            for i, fname in enumerate(train_wavs):
+                dst = os.path.join(pos_train, f"real_train_{i:04d}.wav")
+                if not os.path.exists(dst):
+                    shutil.copy2(os.path.join(real_dir, fname), dst)
+                    copied += 1
+            for i, fname in enumerate(test_wavs):
+                dst = os.path.join(pos_test, f"real_test_{i:04d}.wav")
+                if not os.path.exists(dst):
+                    shutil.copy2(os.path.join(real_dir, fname), dst)
+                    copied += 1
+            log.info(f"[real] {len(train_wavs)} train + {len(test_wavs)} test grabaciones reales copiadas ({copied} nuevas)")
 
     # ---- Calcular total_length desde samples positivos ----
     pos_test_clips = list(Path(pos_test).glob("*.wav"))

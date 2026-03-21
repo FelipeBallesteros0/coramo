@@ -169,6 +169,67 @@ en el branch/commit correspondiente — solo actualiza y reinicia.
 
 ---
 
+## Reentrenar con tu voz real (recomendado si el modelo no detecta)
+
+El modelo entrenado solo con TTS sintético puede no reconocer bien la voz real.
+Para mejorar esto, graba muestras reales en el RPi y mézclalas en el entrenamiento.
+
+### Paso A: Grabar muestras en el RPi
+
+```bash
+# En el RPi:
+python3 ~/coramo/training/record_samples.py \
+  --output-dir ~/real_samples \
+  --count 60
+```
+
+Di "coramo" para cada [REC]. Varía la entonación — rápido, lento, cerca, lejos del mic.
+
+### Paso B: Copiar grabaciones al PC (desde WSL2)
+
+```bash
+scp -r felipe@coramo.local:~/real_samples ~/real_samples
+```
+
+### Paso C: Reentrenar mezclando real + sintético
+
+```bash
+cd ~/coramo
+source ~/train-env/bin/activate
+
+python training/train_coramo.py \
+  --piper-model ~/piper-voices/es_ES-davefx-medium.onnx \
+  --output-dir ~/coramo_training \
+  --real-recordings-dir ~/real_samples \
+  --skip-generate \
+  --steps 15000
+```
+
+> `--skip-generate` reutiliza los samples sintéticos ya generados.
+> `--real-recordings-dir` mezcla tus grabaciones reales con los sintéticos (80% train / 20% test).
+> `--steps 15000` (más pasos que el default 10000) para compensar el dataset más pequeño.
+
+### Paso D: Copiar nuevo modelo al RPi
+
+```bash
+scp ~/coramo_training/models/coramo.onnx \
+    ~/coramo_training/models/coramo.onnx.data \
+    felipe@coramo.local:/home/felipe/coramo/models/
+```
+
+⚠️ Copiar **ambos archivos** (`coramo.onnx` + `coramo.onnx.data`).
+
+### Paso E: Verificar con el script de diagnóstico
+
+```bash
+# En el RPi:
+~/coramo/scripts/test_wakeword.py
+```
+
+El score debería llegar a ≥ 0.4 con tu voz. Ajusta `OWW_THRESHOLD` a `max_score × 0.8`.
+
+---
+
 ## Opciones avanzadas del script
 
 ```bash
