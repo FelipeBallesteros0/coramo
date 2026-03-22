@@ -220,7 +220,8 @@ TOOLS = [
 ]
 
 SYSTEM_MSG = (
-    "Eres Coramo, un asistente de voz en espanol con control de hardware. "
+    "Eres Coramo, un asistente de voz en espanol. "
+    "Puedes responder preguntas generales y tambien controlar hardware (servo). "
     "Responde de forma concisa en maximo 3 oraciones. "
     "Solo texto plano, sin listas ni markdown. /no_think"
 )
