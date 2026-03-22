@@ -5,8 +5,8 @@
 Adafruit_PWMServoDriver pca = Adafruit_PWMServoDriver(0x40);
 
 const int NUM_DEDOS = 5;
-const int POS0   = 172;   // PWM para 0 grados
-const int POS180 = 565;   // PWM para 180 grados
+const int POS0   = 565;   // PWM para 0 grados
+const int POS180 = 172;   // PWM para 180 grados
 // Pin 0 = pulgar (invertido), pins 1-4 = dedos normales
 
 void setup() {
