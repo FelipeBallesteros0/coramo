@@ -23,7 +23,7 @@ Pipeline completo de voz a voz con control de hardware:
 Micrófono → openWakeWord coramo.onnx (CPU, threshold 0.97, sustain 3 frames)
           → Silero VAD (CPU, fin de habla)
           → whisper large-v3-turbo (GPU 1, transcripción)
-          → Qwen3-8B Q4_K_M (GPU 0, LLM)
+          → Qwen3-14B Q4_K_M (GPU 0+1 dual, LLM)
           → function calling → Arduino Mega → servo
           → Piper TTS (CPU, es_ES-davefx)
           → Altavoz
@@ -91,7 +91,7 @@ amdgpu.num_kcq=0 amdgpu.lockup_timeout=0
 - [x] Salida de video por GPU
 - [x] Whisper large-v3-turbo en tiempo real con GPU
 - [x] Asistente de voz con wake word
-- [x] LLM Qwen3-8B con GPU (llama-server)
+- [x] LLM Qwen3-14B Q4_K_M con dual-GPU (llama-server --device Vulkan0,Vulkan1)
 - [x] Piper TTS en español
 - [x] Function calling → control de servo via Arduino Mega
 - [x] Órdenes complejas de servo: barrer (ida/vuelta N veces), oscilar (continuo), detener
