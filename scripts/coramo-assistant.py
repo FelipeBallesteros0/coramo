@@ -49,10 +49,10 @@ PIPER_MODEL     = os.path.expanduser("~/piper-voices/es_ES-davefx-medium.onnx")
 AUDIO_DEVICE    = "default"
 
 # -- GPU assignment ----------------------------------------------------------
-# llama-server usa ambas GPUs con tensor split 50/50 (modelo no cabe en una sola)
-# whisper usa GPU 1 bajo demanda (coexiste con la mitad del modelo en GPU 1)
+# llama-server ve todas las GPUs, tensor-split 1,1,0,0 asigna solo GPU0+GPU1 (ambas RX580)
+# whisper usa GPU1 (GGML_VK_VISIBLE_DEVICES=1) bajo demanda
 WHISPER_GPU_ENV = {"GGML_VK_VISIBLE_DEVICES": "1"}
-LLAMA_GPU_ENV   = {"GGML_VK_VISIBLE_DEVICES": "0,1"}
+LLAMA_GPU_ENV   = {}  # sin restriccion: llama-server ve todas las Vulkan GPUs
 
 # -- llama-server settings ---------------------------------------------------
 LLAMA_HOST = "127.0.0.1"
@@ -106,7 +106,7 @@ def start_llm_server() -> None:
         LLAMA_SERVER,
         "-m", LLAMA_MODEL,
         "--n-gpu-layers", "99",
-        "--tensor-split", "1,1",
+        "--tensor-split", "1,1,0,0",
         "--ctx-size", "2048",
         "--cache-type-k", "q8_0",
         "--cache-type-v", "q8_0",
