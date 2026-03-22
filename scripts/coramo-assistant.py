@@ -65,6 +65,7 @@ OWW_MODEL_PATH    = os.path.expanduser("~/coramo/models/coramo.onnx")
 OWW_THRESHOLD     = 0.5    # score minimo para primera etapa (OWW)
 OWW_CHUNK_SAMPLES = 1280   # 80ms a 16kHz (requerido por openWakeWord)
 OWW_BUFFER_CHUNKS = 20     # buffer de audio para confirmacion (~1.6s)
+OWW_SUSTAIN_FRAMES = 3     # frames consecutivos requeridos para activar (~240ms)
 
 # -- Audio settings ----------------------------------------------------------
 SAMPLE_RATE        = 16000
@@ -559,11 +560,19 @@ def _confirm_wake_word(audio_buffer: collections.deque) -> bool:
             wf.writeframes(samples.tobytes())
         text = transcribe(confirm_file, model=WHISPER_MODEL_WAKE).lower().strip()
         log(f"  [oww confirm] whisper='{text}'")
-        best = max(
-            (difflib.SequenceMatcher(None, text, w).ratio() for w in WAKE_WORDS),
-            default=0.0,
-        )
-        return best >= 0.5 or any(w in text for w in WAKE_WORDS)
+        # Variantes fonicas aceptables de "coramo"
+        CORAMO_VARIANTS = ["coramo", "cramo", "coramo", "koramo", "curamo", "colamo", "corámo"]
+        # Primero: variante exacta en el texto (mas confiable)
+        if any(v in text for v in CORAMO_VARIANTS):
+            return True
+        # Segundo: comparacion por palabras individuales (no por caracteres)
+        # para evitar falsos positivos como "por favor" que comparte letras con "coramo"
+        text_words = text.split()
+        for word in text_words:
+            for v in CORAMO_VARIANTS:
+                if difflib.SequenceMatcher(None, word, v).ratio() >= 0.75:
+                    return True
+        return False
     finally:
         if os.path.exists(confirm_file):
             os.remove(confirm_file)
@@ -585,6 +594,7 @@ def listen_for_wake_word() -> None:
         ], stdout=subprocess.PIPE)
 
     proc = _start_arecord()
+    consec_above = 0
     try:
         while True:
             raw = proc.stdout.read(chunk_bytes)
@@ -592,6 +602,7 @@ def listen_for_wake_word() -> None:
                 log("  [oww] stream cortado, reiniciando...")
                 proc.terminate(); proc.wait()
                 proc = _start_arecord()
+                consec_above = 0
                 continue
 
             audio_chunk = np.frombuffer(raw, dtype=np.int16)
@@ -600,7 +611,13 @@ def listen_for_wake_word() -> None:
             score  = scores.get("coramo", 0.0)
 
             if score >= OWW_THRESHOLD:
-                log(f"  [oww] score={score:.3f} — confirmando con whisper...")
+                consec_above += 1
+            else:
+                consec_above = 0
+
+            if consec_above >= OWW_SUSTAIN_FRAMES:
+                consec_above = 0
+                log(f"  [oww] score={score:.3f} sostenido {OWW_SUSTAIN_FRAMES} frames — confirmando con whisper...")
                 if not _confirm_wake_word(audio_buf):
                     log("  [oww] falso positivo descartado")
                     continue
