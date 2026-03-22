@@ -632,9 +632,14 @@ def listen_for_wake_word() -> None:
                     # Combinar buffer + continuacion
                     concat_wav(buf_file, cont_file, combined)
 
-                    # Si la continuacion no tuvo habla, verificar el buffer con umbral estricto
-                    min_ratio = 0.05 if cont_has_speech else 0.20
-                    if not _audio_has_speech(combined, min_ratio=min_ratio):
+                    # Verificar habla: si hubo continuacion usar combined (ratio bajo),
+                    # si no hubo continuacion verificar solo el buffer (el comando
+                    # puede estar enteramente ahi, ej: "coramo dime X" dicho rapido)
+                    if cont_has_speech:
+                        audio_to_check, min_ratio = combined, 0.05
+                    else:
+                        audio_to_check, min_ratio = buf_file, 0.10
+                    if not _audio_has_speech(audio_to_check, min_ratio=min_ratio):
                         log("  [vad] sin habla suficiente, descartando falso positivo")
                         proc = _start_arecord()
                         continue
