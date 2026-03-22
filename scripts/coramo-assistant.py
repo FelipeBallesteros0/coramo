@@ -629,10 +629,12 @@ def listen_for_wake_word() -> None:
                             ask_llm(question_text)
                         except Exception as e:
                             log(f"  [error en LLM] {type(e).__name__}: {e}")
+                            speak("Tuve un problema, intentalo de nuevo.")
                     else:
                         speak("Dime")
                 except Exception as e:
                     log(f"  [error procesando pregunta] {type(e).__name__}: {e}")
+                    speak("Tuve un problema, intentalo de nuevo.")
                 finally:
                     for f in (buf_file, cont_file, combined):
                         if os.path.exists(f):
