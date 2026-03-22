@@ -554,6 +554,22 @@ def speak(text: str) -> None:
 
 
 
+def _audio_has_speech(wav_file: str, min_ratio: float = 0.05) -> bool:
+    """Verifica con Silero VAD si el WAV contiene habla real (evita mandar ruido a Whisper)."""
+    import torch
+    from silero_vad import get_speech_timestamps
+    rate, data = scipy.io.wavfile.read(wav_file)
+    audio = data.astype(np.float32) / 32768.0
+    if audio.ndim > 1:
+        audio = audio.mean(axis=1)
+    tensor = torch.from_numpy(audio)
+    timestamps = get_speech_timestamps(tensor, _vad_model, sampling_rate=rate, threshold=0.5)
+    if not timestamps:
+        return False
+    speech_samples = sum(t["end"] - t["start"] for t in timestamps)
+    return (speech_samples / len(audio)) >= min_ratio
+
+
 def listen_for_wake_word() -> None:
     log("Coramo escuchando... (di 'coramo' para activar)")
     chunk_bytes = OWW_CHUNK_SAMPLES * 2  # int16 = 2 bytes por muestra
@@ -612,6 +628,11 @@ def listen_for_wake_word() -> None:
 
                     # Combinar buffer + continuacion
                     concat_wav(buf_file, cont_file, combined)
+
+                    if not _audio_has_speech(combined):
+                        log("  [vad] sin habla en el audio combinado, descartando")
+                        proc = _start_arecord()
+                        continue
 
                     log("Transcribiendo pregunta...")
                     full_text = transcribe(combined, model=WHISPER_MODEL_QUERY)
