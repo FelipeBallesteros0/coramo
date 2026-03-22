@@ -1,7 +1,7 @@
 #!/home/felipe/coramo-env/bin/python3
 """
 Coramo Voice Assistant
-Pipeline: openWakeWord (CPU) -> VAD (CPU) -> whisper large-v3-turbo (GPU 1) -> Qwen3-14B (GPU 0+1) -> Piper TTS
+Pipeline: openWakeWord (CPU) -> VAD (CPU) -> whisper large-v3-turbo (GPU 1) -> Qwen3-8B (GPU 0) -> Piper TTS
 Function calling: mover_servo(angulo) -> Arduino Mega via USB serial
 Logs guardados en ~/coramo-debug.log para diagnostico post-crash.
 """
@@ -41,7 +41,7 @@ WHISPER_BIN          = os.path.expanduser("~/whisper.cpp/build/bin/whisper-cli")
 WHISPER_MODEL_WAKE   = os.path.expanduser("~/whisper.cpp/models/ggml-small.bin")           # rapido para wake word
 WHISPER_MODEL_QUERY  = os.path.expanduser("~/whisper.cpp/models/ggml-large-v3-turbo.bin")  # mejor calidad para preguntas
 LLAMA_SERVER    = os.path.expanduser("~/llama.cpp/build/bin/llama-server")
-LLAMA_MODEL     = os.path.expanduser("~/llama.cpp/models/Qwen3-14B-Q4_K_M.gguf")
+LLAMA_MODEL     = os.path.expanduser("~/llama.cpp/models/Qwen3-8B-Q4_K_M.gguf")
 PIPER_BIN       = os.path.expanduser("~/coramo-env/bin/piper")
 PIPER_MODEL     = os.path.expanduser("~/piper-voices/es_ES-davefx-medium.onnx")
 
@@ -101,11 +101,11 @@ _oww = WakeWordModel(wakeword_models=[OWW_MODEL_PATH], inference_framework="onnx
 def start_llm_server() -> None:
     global server_proc
     env = {**os.environ, **LLAMA_GPU_ENV}
-    log("Cargando modelo LLM en GPU 0+1 (dual)...")
+    log("Cargando modelo LLM en GPU 0...")
     server_proc = subprocess.Popen([
         LLAMA_SERVER,
         "-m", LLAMA_MODEL,
-        "--device", "Vulkan0,Vulkan1",
+        "--device", "Vulkan0",
         "--n-gpu-layers", "99",
         "--ctx-size", "2048",
         "--cache-type-k", "q8_0",
