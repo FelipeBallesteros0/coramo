@@ -49,10 +49,10 @@ PIPER_MODEL     = os.path.expanduser("~/piper-voices/es_ES-davefx-medium.onnx")
 AUDIO_DEVICE    = "default"
 
 # -- GPU assignment ----------------------------------------------------------
-# GPU 0 (renderD129) -> llama-server / Qwen
-# GPU 1 (renderD130) -> whisper (num_kcq=0 en kernel params resolvio ring timeouts)
+# llama-server usa ambas GPUs con tensor split 50/50 (modelo no cabe en una sola)
+# whisper usa GPU 1 bajo demanda (coexiste con la mitad del modelo en GPU 1)
 WHISPER_GPU_ENV = {"GGML_VK_VISIBLE_DEVICES": "1"}
-LLAMA_GPU_ENV   = {"GGML_VK_VISIBLE_DEVICES": "0"}
+LLAMA_GPU_ENV   = {"GGML_VK_VISIBLE_DEVICES": "0,1"}
 
 # -- llama-server settings ---------------------------------------------------
 LLAMA_HOST = "127.0.0.1"
@@ -106,6 +106,7 @@ def start_llm_server() -> None:
         LLAMA_SERVER,
         "-m", LLAMA_MODEL,
         "--n-gpu-layers", "99",
+        "--tensor-split", "1,1",
         "--ctx-size", "2048",
         "--cache-type-k", "q8_0",
         "--cache-type-v", "q8_0",
