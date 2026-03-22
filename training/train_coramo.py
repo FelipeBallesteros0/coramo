@@ -377,6 +377,10 @@ def main():
                         help="Directorio con grabaciones reales del usuario (.wav, 16kHz mono) para mezclar con sinteticos")
     parser.add_argument("--real-negative-dir", default=None,
                         help="Directorio con grabaciones reales de negativos (.wav, 16kHz mono) para mezclar con negativos sinteticos")
+    parser.add_argument("--target-fp-rate",  type=float, default=0.5,
+                        help="Falsos positivos tolerados por hora (default: 0.5, usar 0.05 para modelo mas estricto)")
+    parser.add_argument("--oversample-real", type=int, default=1,
+                        help="Cuantas veces copiar cada grabacion real positiva (default: 1, usar 8-10 para dar mas peso)")
     args = parser.parse_args()
 
     # Rutas
@@ -480,17 +484,19 @@ def main():
             n_train = int(len(wavs) * 0.8)
             train_wavs, test_wavs = wavs[:n_train], wavs[n_train:]
             copied = 0
-            for i, fname in enumerate(train_wavs):
-                dst = os.path.join(pos_train, f"real_train_{i:04d}.wav")
-                if not os.path.exists(dst):
-                    shutil.copy2(os.path.join(real_dir, fname), dst)
-                    copied += 1
-            for i, fname in enumerate(test_wavs):
-                dst = os.path.join(pos_test, f"real_test_{i:04d}.wav")
-                if not os.path.exists(dst):
-                    shutil.copy2(os.path.join(real_dir, fname), dst)
-                    copied += 1
-            log.info(f"[real] {len(train_wavs)} train + {len(test_wavs)} test grabaciones reales copiadas ({copied} nuevas)")
+            oversample = max(1, args.oversample_real)
+            for rep in range(oversample):
+                for i, fname in enumerate(train_wavs):
+                    dst = os.path.join(pos_train, f"real_train_r{rep}_{i:04d}.wav")
+                    if not os.path.exists(dst):
+                        shutil.copy2(os.path.join(real_dir, fname), dst)
+                        copied += 1
+                for i, fname in enumerate(test_wavs):
+                    dst = os.path.join(pos_test, f"real_test_r{rep}_{i:04d}.wav")
+                    if not os.path.exists(dst):
+                        shutil.copy2(os.path.join(real_dir, fname), dst)
+                        copied += 1
+            log.info(f"[real] {len(train_wavs)*oversample} train + {len(test_wavs)*oversample} test ({oversample}x oversample, {copied} nuevas)")
 
     # ---- PASO 4c: Copiar negativos reales del usuario ----
     if args.real_negative_dir:
@@ -563,7 +569,7 @@ def main():
         val_fp_path=val_fp_npy,
         steps=args.steps,
         max_negative_weight=500,
-        target_fp_per_hour=0.5,
+        target_fp_per_hour=args.target_fp_rate,
         model_name="coramo",
         output_dir=models_dir,
     )
