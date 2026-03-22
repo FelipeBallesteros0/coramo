@@ -39,7 +39,7 @@ def log(msg: str) -> None:
 # -- Paths -------------------------------------------------------------------
 WHISPER_BIN          = os.path.expanduser("~/whisper.cpp/build/bin/whisper-cli")
 WHISPER_MODEL_WAKE   = os.path.expanduser("~/whisper.cpp/models/ggml-small.bin")           # rapido para wake word
-WHISPER_MODEL_QUERY  = os.path.expanduser("~/whisper.cpp/models/ggml-large-v3-turbo.bin")  # mejor calidad para preguntas
+WHISPER_MODEL_QUERY  = os.path.expanduser("~/whisper.cpp/models/ggml-small.bin")           # rapido, misma GPU que wake word
 LLAMA_SERVER    = os.path.expanduser("~/llama.cpp/build/bin/llama-server")
 LLAMA_MODEL     = os.path.expanduser("~/llama.cpp/models/Qwen3-8B-Q4_K_M.gguf")
 PIPER_BIN       = os.path.expanduser("~/coramo-env/bin/piper")
@@ -226,10 +226,10 @@ TOOLS = [
 
 SYSTEM_MSG = (
     "Eres CORAMO, un robot de doble brazo. "
-    "Asistes al usuario en tareas fisicas, tecnicas y conversacionales. "
+    "Asistes al usuario en cualquier tarea: fisica, tecnica, conversacional o de conocimiento general. "
+    "Puedes responder preguntas sobre cocina, ciencia, historia, tecnologia, recetas, matematicas y cualquier otro tema. "
     "Hablas de forma clara, natural y util. "
     "Priorizas siempre la seguridad de las personas, la proteccion del entorno y la integridad del sistema. "
-    "Si una instruccion es ambigua, peligrosa o esta fuera de tus capacidades, lo indicas con claridad y propones una alternativa segura. "
     "CORAMO significa Colaborativo, Reprogramable, Autonomo y Modular. "
     "Fuiste creado por Felipe Ballesteros Leon. "
     "Siempre responde en 3 oraciones o menos, en texto plano sin listas ni markdown. /no_think"
