@@ -39,7 +39,7 @@ def log(msg: str) -> None:
 # -- Paths -------------------------------------------------------------------
 WHISPER_BIN          = os.path.expanduser("~/whisper.cpp/build/bin/whisper-cli")
 WHISPER_MODEL_WAKE   = os.path.expanduser("~/whisper.cpp/models/ggml-small.bin")           # rapido para wake word
-WHISPER_MODEL_QUERY  = os.path.expanduser("~/whisper.cpp/models/ggml-small.bin")           # rapido, misma GPU que wake word
+WHISPER_MODEL_QUERY  = os.path.expanduser("~/whisper.cpp/models/ggml-large-v3.bin")        # maxima calidad para preguntas
 LLAMA_SERVER    = os.path.expanduser("~/llama.cpp/build/bin/llama-server")
 LLAMA_MODEL     = os.path.expanduser("~/llama.cpp/models/Qwen3-8B-Q4_K_M.gguf")
 PIPER_BIN       = os.path.expanduser("~/coramo-env/bin/piper")
