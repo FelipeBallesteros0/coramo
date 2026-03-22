@@ -375,6 +375,8 @@ def main():
     parser.add_argument("--device",         default="cpu",           help="Dispositivo para features: cpu o cuda (default: cpu)")
     parser.add_argument("--real-recordings-dir", default=None,
                         help="Directorio con grabaciones reales del usuario (.wav, 16kHz mono) para mezclar con sinteticos")
+    parser.add_argument("--real-negative-dir", default=None,
+                        help="Directorio con grabaciones reales de negativos (.wav, 16kHz mono) para mezclar con negativos sinteticos")
     args = parser.parse_args()
 
     # Rutas
@@ -489,6 +491,28 @@ def main():
                     shutil.copy2(os.path.join(real_dir, fname), dst)
                     copied += 1
             log.info(f"[real] {len(train_wavs)} train + {len(test_wavs)} test grabaciones reales copiadas ({copied} nuevas)")
+
+    # ---- PASO 4c: Copiar negativos reales del usuario ----
+    if args.real_negative_dir:
+        real_neg_dir = os.path.expanduser(args.real_negative_dir)
+        wavs = sorted([f for f in os.listdir(real_neg_dir) if f.endswith(".wav")])
+        if not wavs:
+            log.warning(f"[real-neg] No se encontraron .wav en {real_neg_dir}, saltando.")
+        else:
+            n_train = int(len(wavs) * 0.8)
+            train_wavs, test_wavs = wavs[:n_train], wavs[n_train:]
+            copied = 0
+            for i, fname in enumerate(train_wavs):
+                dst = os.path.join(neg_train, f"real_neg_train_{i:04d}.wav")
+                if not os.path.exists(dst):
+                    shutil.copy2(os.path.join(real_neg_dir, fname), dst)
+                    copied += 1
+            for i, fname in enumerate(test_wavs):
+                dst = os.path.join(neg_test, f"real_neg_test_{i:04d}.wav")
+                if not os.path.exists(dst):
+                    shutil.copy2(os.path.join(real_neg_dir, fname), dst)
+                    copied += 1
+            log.info(f"[real-neg] {len(train_wavs)} train + {len(test_wavs)} test negativos reales ({copied} nuevos)")
 
     # ---- Calcular total_length desde samples positivos ----
     pos_test_clips = list(Path(pos_test).glob("*.wav"))
