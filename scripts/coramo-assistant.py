@@ -592,16 +592,33 @@ def listen_for_wake_word() -> None:
                 log(f"  [oww] score={score:.3f} sostenido {OWW_SUSTAIN_FRAMES} frames — wake word!")
                 proc.terminate(); proc.wait()
 
-                speak("Dime")
-                question_file = tempfile.mktemp(suffix=".wav")
+                buf_file  = tempfile.mktemp(suffix=".wav")
+                cont_file = tempfile.mktemp(suffix=".wav")
+                combined  = tempfile.mktemp(suffix=".wav")
                 try:
-                    log("Escuchando pregunta (VAD)...")
-                    record_until_silence(question_file)
+                    # Guardar el buffer actual (contiene la frase dicha junto con "coramo")
+                    buf_samples = np.concatenate(list(audio_buf))
+                    with wave.open(buf_file, "wb") as wf:
+                        wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(SAMPLE_RATE)
+                        wf.writeframes(buf_samples.tobytes())
+
+                    # Seguir grabando por si el usuario no terminó aún
+                    log("Escuchando continuacion (VAD)...")
+                    record_until_silence(cont_file)
+
+                    # Combinar buffer + continuacion
+                    concat_wav(buf_file, cont_file, combined)
+
                     log("Transcribiendo pregunta...")
-                    question_text = transcribe(question_file, model=WHISPER_MODEL_QUERY)
-                    log(f"  [transcripcion] '{question_text}'")
+                    full_text = transcribe(combined, model=WHISPER_MODEL_QUERY)
+                    log(f"  [transcripcion] '{full_text}'")
+
+                    # Extraer solo la parte posterior a la wake word
+                    question_text = extract_question(full_text) or full_text
+                    question_text = question_text.strip()
+                    log(f"Pregunta: '{question_text}'")
+
                     if question_text:
-                        log(f"Pregunta: {question_text}")
                         ensure_llm_server()
                         log("Enviando al LLM...")
                         try:
@@ -609,12 +626,13 @@ def listen_for_wake_word() -> None:
                         except Exception as e:
                             log(f"  [error en LLM] {type(e).__name__}: {e}")
                     else:
-                        speak("No entendi la pregunta, intentalo de nuevo.")
+                        speak("Dime")
                 except Exception as e:
-                    log(f"  [error grabando pregunta] {type(e).__name__}: {e}")
+                    log(f"  [error procesando pregunta] {type(e).__name__}: {e}")
                 finally:
-                    if os.path.exists(question_file):
-                        os.remove(question_file)
+                    for f in (buf_file, cont_file, combined):
+                        if os.path.exists(f):
+                            os.remove(f)
 
                 log("Volviendo a escuchar...")
                 proc = _start_arecord()
