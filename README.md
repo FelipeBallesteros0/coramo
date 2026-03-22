@@ -24,7 +24,7 @@ Micrófono → openWakeWord coramo.onnx (CPU, threshold 0.97, sustain 3 frames)
           → Silero VAD (CPU, fin de habla)
           → whisper large-v3-turbo (GPU 1, transcripción)
           → Qwen3-8B Q4_K_M (GPU 0, LLM)
-          → function calling → Arduino Mega → servo
+          → function calling → Arduino Mega → PCA9685 → mano robótica (5 servos)
           → Piper TTS (CPU, es_ES-davefx)
           → Altavoz
 ```
@@ -32,10 +32,9 @@ Micrófono → openWakeWord coramo.onnx (CPU, threshold 0.97, sustain 3 frames)
 **Wake words:** "coramo", "hola coramo", "hey coramo", "oye coramo"
 
 **Ejemplos:**
-- *"coramo pon el servo a 90 grados"* → mueve a ángulo fijo
-- *"coramo mueve el motor entre 0 y 180 grados 3 veces"* → barrido ida/vuelta
-- *"coramo oscila el motor lentamente"* → oscilación continua
-- *"coramo detén el motor"* → para cualquier movimiento
+- *"coramo abre la mano"* → gesto: todos los dedos a 0°
+- *"coramo cierra la mano"* → gesto: todos los dedos a 180°
+- *"coramo mueve el índice a 90 grados"* → mover_dedo(1, 90)
 
 **Optimizaciones de latencia:**
 - Streaming LLM→TTS — empieza a hablar en cuanto termina la primera oración, sin esperar la respuesta completa.
