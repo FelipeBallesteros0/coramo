@@ -20,8 +20,10 @@ import atexit
 import collections
 import difflib
 import numpy as np
+import scipy.io.wavfile
+import torch
 import concurrent.futures
-from silero_vad import load_silero_vad, VADIterator
+from silero_vad import load_silero_vad, VADIterator, get_speech_timestamps
 from openwakeword.model import Model as WakeWordModel
 sys.path.insert(0, os.path.dirname(__file__))
 import arduino
@@ -556,8 +558,6 @@ def speak(text: str) -> None:
 
 def _audio_has_speech(wav_file: str, min_ratio: float = 0.05) -> bool:
     """Verifica con Silero VAD si el WAV contiene habla real (evita mandar ruido a Whisper)."""
-    import torch
-    from silero_vad import get_speech_timestamps
     rate, data = scipy.io.wavfile.read(wav_file)
     audio = data.astype(np.float32) / 32768.0
     if audio.ndim > 1:
