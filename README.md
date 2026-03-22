@@ -20,7 +20,7 @@ Raspberry Pi 5 configurada como estación de trabajo con GPUs discretas AMD RX 5
 Pipeline completo de voz a voz con control de hardware:
 
 ```
-Micrófono → openWakeWord coramo.onnx (CPU, wake word en tiempo real)
+Micrófono → openWakeWord coramo.onnx (CPU, threshold 0.97, sustain 3 frames)
           → Silero VAD (CPU, fin de habla)
           → whisper large-v3-turbo (GPU 1, transcripción)
           → Qwen3-8B Q4_K_M (GPU 0, LLM)
@@ -73,6 +73,7 @@ amdgpu.num_kcq=0 amdgpu.lockup_timeout=0
 | [`training/record_samples.py`](training/record_samples.py) | Graba muestras de voz real en RPi para mejorar el modelo |
 | [`training/GUIA_ENTRENAMIENTO.md`](training/GUIA_ENTRENAMIENTO.md) | Guía paso a paso para entrenar en Windows/WSL2 |
 | [`scripts/test_wakeword.py`](scripts/test_wakeword.py) | Diagnóstico: muestra scores de wake word en tiempo real |
+| [`scripts/capture_hard_negatives.py`](scripts/capture_hard_negatives.py) | Captura clips de audio que confunden al modelo (hard negative mining) |
 | [`models/coramo.onnx`](models/coramo.onnx) | Modelo openWakeWord (generado tras entrenar, no incluido en repo) |
 | [`scripts/arduino.py`](scripts/arduino.py) | Comunicación serial con Arduino |
 | [`arduino/coramo_servo.ino`](arduino/coramo_servo.ino) | Sketch Arduino para control de servo |
@@ -96,8 +97,9 @@ amdgpu.num_kcq=0 amdgpu.lockup_timeout=0
 - [x] Órdenes complejas de servo: barrer (ida/vuelta N veces), oscilar (continuo), detener
 - [x] Silero VAD para detección de fin de habla (reemplaza grabaciones fijas)
 - [x] Wake word mejorada: whisper `--prompt "Coramo,"` + fuzzy matching (difflib, ratio ≥ 0.75)
-- [x] openWakeWord con modelo custom "coramo" integrado (coramo.onnx, threshold calibrado con diagnóstico)
-- [ ] Reentrenamiento con voz real para mejorar detección (ver [training/GUIA_ENTRENAMIENTO.md](training/GUIA_ENTRENAMIENTO.md))
+- [x] openWakeWord con modelo custom "coramo" integrado (coramo.onnx)
+- [x] Reentrenamiento con voz real + hard negative mining (558 falsos positivos capturados del cuarto)
+- [x] Wake word: threshold 0.97 + sustain 3 frames consecutivos — sin filtro Whisper
 - [x] amdgpu.lockup_timeout=0 para prevenir kernel panic por ring gfx timeout en GPU 0
 - [x] Overlap transcripción+grabación (ThreadPoolExecutor) para reducir latencia
 - [x] KV cache warmup del system prompt al arrancar
