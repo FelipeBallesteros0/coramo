@@ -62,7 +62,7 @@ WAKE_WORDS = ["coramo", "hola coramo", "hey coramo", "oye coramo"]
 
 # -- openWakeWord ------------------------------------------------------------
 OWW_MODEL_PATH    = os.path.expanduser("~/coramo/models/coramo.onnx")
-OWW_THRESHOLD     = 0.5    # score minimo para primera etapa (OWW)
+OWW_THRESHOLD     = 0.97   # score minimo para activar (requiere sustain consecutivo)
 OWW_CHUNK_SAMPLES = 1280   # 80ms a 16kHz (requerido por openWakeWord)
 OWW_BUFFER_CHUNKS = 20     # buffer de audio para confirmacion (~1.6s)
 OWW_SUSTAIN_FRAMES = 3     # frames consecutivos requeridos para activar (~240ms)
@@ -549,35 +549,6 @@ def speak(text: str) -> None:
                 os.remove(f)
 
 
-def _confirm_wake_word(audio_buffer: collections.deque) -> bool:
-    """Etapa 2: confirma con Whisper que el buffer contiene 'coramo'."""
-    samples = np.concatenate(list(audio_buffer))
-    confirm_file = tempfile.mktemp(suffix=".wav")
-    try:
-        with wave.open(confirm_file, "wb") as wf:
-            wf.setnchannels(1)
-            wf.setsampwidth(2)
-            wf.setframerate(SAMPLE_RATE)
-            wf.writeframes(samples.tobytes())
-        text = transcribe(confirm_file, model=WHISPER_MODEL_WAKE).lower().strip()
-        log(f"  [oww confirm] whisper='{text}'")
-        # Variantes fonicas aceptables de "coramo"
-        CORAMO_VARIANTS = ["coramo", "cramo", "coramo", "koramo", "curamo", "colamo", "corámo"]
-        # Primero: variante exacta en el texto (mas confiable)
-        if any(v in text for v in CORAMO_VARIANTS):
-            return True
-        # Segundo: comparacion por palabras individuales (no por caracteres)
-        # para evitar falsos positivos como "por favor" que comparte letras con "coramo"
-        text_words = text.split()
-        for word in text_words:
-            for v in CORAMO_VARIANTS:
-                if difflib.SequenceMatcher(None, word, v).ratio() >= 0.75:
-                    return True
-        return False
-    finally:
-        if os.path.exists(confirm_file):
-            os.remove(confirm_file)
-
 
 def listen_for_wake_word() -> None:
     log("Coramo escuchando... (di 'coramo' para activar)")
@@ -618,11 +589,7 @@ def listen_for_wake_word() -> None:
 
             if consec_above >= OWW_SUSTAIN_FRAMES:
                 consec_above = 0
-                log(f"  [oww] score={score:.3f} sostenido {OWW_SUSTAIN_FRAMES} frames — confirmando con whisper...")
-                if not _confirm_wake_word(audio_buf):
-                    log("  [oww] falso positivo descartado")
-                    continue
-                log("Wake word confirmada!")
+                log(f"  [oww] score={score:.3f} sostenido {OWW_SUSTAIN_FRAMES} frames — wake word!")
                 proc.terminate(); proc.wait()
 
                 speak("Dime")
