@@ -402,8 +402,8 @@ def concat_wav(file1: str, file2: str, output: str) -> None:
         out.writeframes(data)
 
 
-def record_until_silence(filename: str) -> float:
-    """Graba hasta detectar silencio con Silero VAD. Retorna duracion en segundos."""
+def record_until_silence(filename: str) -> tuple[float, bool]:
+    """Graba hasta detectar silencio con Silero VAD. Retorna (duracion, habla_detectada)."""
     _vad.reset_states()
     chunk_bytes = VAD_CHUNK_SAMPLES * 2  # int16 = 2 bytes por muestra
     frames = []
@@ -459,7 +459,7 @@ def record_until_silence(filename: str) -> float:
 
     duration = elapsed_ms / 1000.0
     log(f"  [vad] grabados {duration:.1f}s (max={VAD_MAX_SECS}s)")
-    return duration
+    return duration, speech_detected
 
 
 def record_wav(filename: str, seconds: int) -> None:
@@ -624,13 +624,15 @@ def listen_for_wake_word() -> None:
 
                     # Seguir grabando por si el usuario no terminó aún
                     log("Escuchando continuacion (VAD)...")
-                    record_until_silence(cont_file)
+                    _, cont_has_speech = record_until_silence(cont_file)
 
                     # Combinar buffer + continuacion
                     concat_wav(buf_file, cont_file, combined)
 
-                    if not _audio_has_speech(combined):
-                        log("  [vad] sin habla en el audio combinado, descartando")
+                    # Si la continuacion no tuvo habla, verificar el buffer con umbral estricto
+                    min_ratio = 0.05 if cont_has_speech else 0.20
+                    if not _audio_has_speech(combined, min_ratio=min_ratio):
+                        log("  [vad] sin habla suficiente, descartando falso positivo")
                         proc = _start_arecord()
                         continue
 
