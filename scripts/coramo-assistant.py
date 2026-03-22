@@ -102,16 +102,18 @@ def start_llm_server() -> None:
     global server_proc
     env = {**os.environ, **LLAMA_GPU_ENV}
     log("Cargando modelo LLM en GPU 1...")
-    _llama_log = open("/home/felipe/llama-server.log", "w", buffering=1)
     server_proc = subprocess.Popen([
         LLAMA_SERVER,
         "-m", LLAMA_MODEL,
         "--n-gpu-layers", "99",
-        "--ctx-size", "1024",
+        "--ctx-size", "2048",
+        "--cache-type-k", "q8_0",
+        "--cache-type-v", "q8_0",
         "-fit", "off",
         "--host", LLAMA_HOST,
         "--port", str(LLAMA_PORT),
-    ], env=env, stdout=_llama_log, stderr=_llama_log)
+        "--log-disable",
+    ], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     for _ in range(300):
         try:
