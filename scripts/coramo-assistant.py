@@ -238,7 +238,7 @@ def call_tool(name: str, args: dict) -> str:
 
 def _llm_request(messages: list, stream: bool, extra: dict = None) -> dict | str:
     """Hace una peticion a llama-server. Reintenta una vez si el servidor cae (503)."""
-    payload = {"messages": messages, "temperature": 0.7, "max_tokens": 120, "stream": stream}
+    payload = {"messages": messages, "temperature": 0.1, "max_tokens": 120, "stream": stream}
     if extra:
         payload.update(extra)
     data_bytes = json.dumps(payload).encode()
