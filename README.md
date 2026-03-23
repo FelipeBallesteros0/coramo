@@ -20,9 +20,9 @@ Raspberry Pi 5 configurada como estación de trabajo con GPUs discretas AMD RX 5
 Pipeline completo de voz a voz con control de hardware:
 
 ```
-Micrófono → openWakeWord coramo.onnx (CPU, threshold 0.97, sustain 3 frames)
-          → Silero VAD (CPU, fin de habla)
-          → whisper large-v3-turbo (GPU 1, transcripción)
+Micrófono → Silero VAD (CPU, detecta habla)
+          → whisper medium-q5_0 (GPU 1, transcripción)
+          → check "coramo" en texto → descarta si no está
           → Qwen3-8B Q4_K_M (GPU 0, LLM)
           → function calling → Arduino Mega → PCA9685 → mano robótica (5 servos)
           → Piper TTS (CPU, es_ES-davefx)
@@ -48,11 +48,11 @@ Micrófono → openWakeWord coramo.onnx (CPU, threshold 0.97, sustain 3 frames)
 Parámetros añadidos a `/boot/firmware/cmdline.txt`:
 
 ```
-amdgpu.num_kcq=0 amdgpu.lockup_timeout=0
+amdgpu.num_kcq=0 amdgpu.lockup_timeout=180000
 ```
 
 - `amdgpu.num_kcq=0` — desactiva los async compute rings. Necesario porque las GPUs corren a PCIe x1 (multiplexor ASM1184e) — los compute rings tienen timeouts en GPU 1 sin este parámetro.
-- `amdgpu.lockup_timeout=0` — desactiva el detector de lockup del ring `gfx`. Sin esto, el ring `gfx` de GPU 0 hace timeout durante inferencia LLM, el BACO reset falla al restaurar VRAM por PCIe lento (`recover vram bo from shadow failed, r=-110`) y el sistema se cuelga.
+- `amdgpu.lockup_timeout=180000` — extiende el timeout del ring `gfx` a 3 minutos. Sin esto, el ring `gfx` de GPU 0 hace timeout durante inferencia LLM y el servidor llama-server cae con `ErrorDeviceLost`.
 
 ## Índice de documentación
 
@@ -68,14 +68,9 @@ amdgpu.num_kcq=0 amdgpu.lockup_timeout=0
 | Archivo | Descripción |
 |---|---|
 | [`scripts/coramo-assistant.py`](scripts/coramo-assistant.py) | Asistente de voz principal |
-| [`training/train_coramo.py`](training/train_coramo.py) | Script para entrenar modelo openWakeWord custom "coramo" en PC |
-| [`training/record_samples.py`](training/record_samples.py) | Graba muestras de voz real en RPi para mejorar el modelo |
-| [`training/GUIA_ENTRENAMIENTO.md`](training/GUIA_ENTRENAMIENTO.md) | Guía paso a paso para entrenar en Windows/WSL2 |
-| [`scripts/test_wakeword.py`](scripts/test_wakeword.py) | Diagnóstico: muestra scores de wake word en tiempo real |
-| [`scripts/capture_hard_negatives.py`](scripts/capture_hard_negatives.py) | Captura clips de audio que confunden al modelo (hard negative mining) |
-| [`models/coramo.onnx`](models/coramo.onnx) | Modelo openWakeWord (generado tras entrenar, no incluido en repo) |
-| [`scripts/arduino.py`](scripts/arduino.py) | Comunicación serial con Arduino |
-| [`arduino/coramo_servo.ino`](arduino/coramo_servo.ino) | Sketch Arduino para control de servo |
+| [`scripts/arduino.py`](scripts/arduino.py) | Comunicación serial con Arduino (mover_dedo, gesto) |
+| [`arduino/coramo_servo.ino`](arduino/coramo_servo.ino) | Sketch Arduino — PCA9685, 5 servos, comandos JSON |
+| [`scripts/debug_mano.py`](scripts/debug_mano.py) | Debug interactivo de hardware de la mano robótica |
 | [`scripts/whisper-stream.sh`](scripts/whisper-stream.sh) | Transcripción en tiempo real |
 | [`scripts/fix-firmware-zst.sh`](scripts/fix-firmware-zst.sh) | Descomprimir firmwares para kernel 6.6.x |
 | [`scripts/network-check.sh`](scripts/network-check.sh) | Verificar estado de red y failover |
@@ -88,18 +83,14 @@ amdgpu.num_kcq=0 amdgpu.lockup_timeout=0
 - [x] Kernel con soporte amdgpu
 - [x] Dos GPU RX 580 operativas
 - [x] Salida de video por GPU
-- [x] Whisper large-v3-turbo en tiempo real con GPU
-- [x] Asistente de voz con wake word
-- [x] LLM Qwen3-8B Q4_K_M con GPU 0 (llama-server --device Vulkan0)
+- [x] Whisper medium-q5_0 en GPU 1 (~8s transcripción)
+- [x] Pipeline simplificado: VAD → Whisper → check "coramo" → LLM (sin openWakeWord)
+- [x] LLM Qwen3-8B Q4_K_M con GPU 0 (llama-server --device Vulkan0, --parallel 1, --cache-ram 0)
 - [x] Piper TTS en español
-- [x] Function calling → control de servo via Arduino Mega
-- [x] Órdenes complejas de servo: barrer (ida/vuelta N veces), oscilar (continuo), detener
-- [x] Silero VAD para detección de fin de habla (reemplaza grabaciones fijas)
-- [x] Wake word mejorada: whisper `--prompt "Coramo,"` + fuzzy matching (difflib, ratio ≥ 0.75)
-- [x] openWakeWord con modelo custom "coramo" integrado (coramo.onnx)
-- [x] Reentrenamiento con voz real + hard negative mining (558 falsos positivos capturados del cuarto)
-- [x] Wake word: threshold 0.97 + sustain 3 frames consecutivos — sin filtro Whisper
-- [x] amdgpu.lockup_timeout=0 para prevenir kernel panic por ring gfx timeout en GPU 0
+- [x] Function calling → mano robótica 5 dedos via Arduino Mega + PCA9685
+- [x] Gestos: abre/cierra mano y control de dedo individual
+- [x] Silero VAD para detección de fin de habla
+- [x] amdgpu.lockup_timeout=180000 para prevenir crash de llama-server por ring gfx timeout
 - [x] Overlap transcripción+grabación (ThreadPoolExecutor) para reducir latencia
 - [x] KV cache warmup del system prompt al arrancar
 - [x] Eliminado double request LLM en respuestas sin tool_calls
