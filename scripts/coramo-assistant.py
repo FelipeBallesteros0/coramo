@@ -1,7 +1,7 @@
 #!/home/felipe/coramo-env/bin/python3
 """
 Coramo Voice Assistant
-Pipeline: VAD (CPU) -> whisper small (GPU 1) -> check "coramo" -> Qwen3-4B (GPU 0) -> Piper TTS
+Pipeline: VAD (CPU) -> whisper base (GPU 1) -> check "coramo" -> Qwen3-4B (GPU 0) -> Piper TTS
 Function calling: mover_dedo(dedo,angulo) / gesto(nombre) -> PCA9685 -> mano robotica
 Logs guardados en ~/coramo-debug.log para diagnostico post-crash.
 """
@@ -36,7 +36,7 @@ def log(msg: str) -> None:
 
 # -- Paths -------------------------------------------------------------------
 WHISPER_BIN          = os.path.expanduser("~/whisper.cpp/build/bin/whisper-cli")
-WHISPER_MODEL_QUERY  = os.path.expanduser("~/whisper.cpp/models/ggml-small.bin")             # small fp32 (~5s en GPU1 con flash-attn)
+WHISPER_MODEL_QUERY  = os.path.expanduser("~/whisper.cpp/models/ggml-base.bin")              # base fp32 (~2.5s en GPU1 con flash-attn)
 LLAMA_SERVER    = os.path.expanduser("~/llama.cpp/build/bin/llama-server")
 LLAMA_MODEL     = os.path.expanduser("~/llama.cpp/models/Qwen3-4B-Q4_K_M.gguf")
 PIPER_BIN       = os.path.expanduser("~/coramo-env/bin/piper")
