@@ -9,7 +9,7 @@ import time
 
 SERIAL_PORT = "/dev/ttyUSB0"
 BAUD_RATE   = 115200
-TIMEOUT     = 3.0
+TIMEOUT     = 5.0
 
 NOMBRES_DEDO = ["pulgar", "indice", "medio", "anular", "menique"]
 
@@ -46,6 +46,7 @@ def mover_dedo(dedo: int, angulo: int) -> dict:
     cmd = json.dumps({"dedo": dedo, "angulo": angulo}) + "\n"
     try:
         _conn.write(cmd.encode())
+        _conn.flush()
         resp = _conn.readline().decode().strip()
         return json.loads(resp) if resp else {"error": "sin respuesta"}
     except Exception as e:
@@ -61,6 +62,7 @@ def gesto(nombre: str) -> dict:
     cmd = json.dumps({"gesto": nombre}) + "\n"
     try:
         _conn.write(cmd.encode())
+        _conn.flush()
         resp = _conn.readline().decode().strip()
         return json.loads(resp) if resp else {"error": "sin respuesta"}
     except Exception as e:

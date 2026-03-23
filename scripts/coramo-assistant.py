@@ -453,24 +453,26 @@ def contains_wake_word(text: str) -> bool:
     # Coincidencia fuzzy: comparar cada palabra del texto con "coramo"
     words = normalized.split()
     for word in words:
-        if len(word) >= 4 and difflib.SequenceMatcher(None, word, "coramo").ratio() >= 0.75:
+        if len(word) >= 5 and difflib.SequenceMatcher(None, word, "coramo").ratio() >= 0.80:
             return True
     return False
 
 
 def extract_question(text: str) -> str:
-    """Extrae el texto entre la primera y segunda wake word (si hay repeticion)."""
+    """Extrae el texto posterior a la wake word."""
     normalized = re.sub(r"[^\w\s]", "", text.lower())
     for ww in sorted(WAKE_WORDS, key=len, reverse=True):  # mas largo primero
-        if ww in normalized:
-            idx = normalized.index(ww) + len(ww)
+        # Usar word boundary para no hacer match dentro de "coramos", etc.
+        m = re.search(r'\b' + re.escape(ww) + r'\b', normalized)
+        if m:
+            idx = m.end()
             remainder_norm = normalized[idx:].strip()
-            remainder_text = text[idx:].strip(" ,.-\n")
+            remainder_text = text[m.end():].strip(" ,.-\n")
             # Si hay una segunda wake word, cortar ahi
             for ww2 in WAKE_WORDS:
-                if ww2 in remainder_norm:
-                    cut = remainder_norm.index(ww2)
-                    remainder_text = remainder_text[:cut].strip(" ,.-\n")
+                m2 = re.search(r'\b' + re.escape(ww2) + r'\b', remainder_norm)
+                if m2:
+                    remainder_text = remainder_text[:m2.start()].strip(" ,.-\n")
                     break
             return remainder_text
     return ""
