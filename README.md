@@ -1,6 +1,8 @@
-# Proyecto Coramo
+# Proyecto CORAMO
 
-Raspberry Pi 5 configurada como estación de trabajo con GPUs discretas AMD RX 580, asistente de voz con IA local y control de hardware via Arduino.
+**CORAMO** — **CO**laborativo **R**eprogramable **A**utónomo **MO**dular
+
+Robot de doble brazo diseñado para asistir en tareas domésticas e industriales. Controlado por voz con IA completamente local, sin dependencias de la nube. Basado en Raspberry Pi 5 con GPUs discretas AMD RX 580.
 
 ## Hardware
 
