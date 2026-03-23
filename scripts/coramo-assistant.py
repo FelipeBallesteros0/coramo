@@ -161,13 +161,16 @@ TOOLS = [
             "description": (
                 "Mueve un dedo de la mano robotica a un angulo. "
                 "Dedos: 0=pulgar, 1=indice, 2=medio, 3=anular, 4=menique. "
-                "Usar para: 'mueve el indice a 90', 'dobla el pulgar', 'extiende el medio'."
+                "CONVENCION DE ANGULO (IMPORTANTE): "
+                "Para dedos 1-4 (indice, medio, anular, menique): 0=extendido/abierto, 180=doblado/cerrado. "
+                "Para el pulgar (dedo 0): 0=doblado/cerrado, 180=extendido/abierto. "
+                "Ejemplos: 'abre el indice'→angulo=0, 'cierra el medio'→angulo=180, 'extiende el pulgar'→angulo=180."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "dedo":   {"type": "integer", "description": "Indice del dedo: 0=pulgar, 1=indice, 2=medio, 3=anular, 4=menique"},
-                    "angulo": {"type": "integer", "description": "Angulo en grados (0=abierto, 180=cerrado)"},
+                    "angulo": {"type": "integer", "description": "Angulo: dedos 1-4: 0=extendido, 180=cerrado. Pulgar(0): 0=cerrado, 180=extendido"},
                 },
                 "required": ["dedo", "angulo"],
             },
