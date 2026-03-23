@@ -332,16 +332,21 @@ def ask_llm(question: str) -> None:
     log(f"  [llm] finish_reason={finish}")
 
     if finish == "tool_calls" and msg.get("tool_calls"):
-        # Ejecutar tools y luego respuesta en streaming
+        # Ejecutar tools — sin TTS si todas son acciones de hardware
         messages.append(msg)
+        all_ok = True
         for tc in msg["tool_calls"]:
             name = tc["function"]["name"]
             args = json.loads(tc["function"]["arguments"])
             result_str = call_tool(name, args)
+            if "Error" in result_str:
+                all_ok = False
             messages.append({"role": "tool", "tool_call_id": tc["id"], "content": result_str})
-        log("  [llm] generando respuesta final en streaming...")
-        resp = _llm_request(messages, stream=True)
-        _stream_speak(resp)
+        if not all_ok:
+            # Solo habla si hubo error en alguna tool
+            log("  [llm] generando respuesta de error...")
+            resp = _llm_request(messages, stream=True)
+            _stream_speak(resp)
     else:
         # Respuesta normal — usar el contenido ya obtenido, sin segunda peticion
         content = msg.get("content", "").strip()
