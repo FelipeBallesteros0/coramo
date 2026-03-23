@@ -36,7 +36,7 @@ def log(msg: str) -> None:
 
 # -- Paths -------------------------------------------------------------------
 WHISPER_BIN          = os.path.expanduser("~/whisper.cpp/build/bin/whisper-cli")
-WHISPER_MODEL_QUERY  = os.path.expanduser("~/whisper.cpp/models/ggml-medium-q5_0.bin")      # medium cuantizado q5_0 (515MB, ~8s)
+WHISPER_MODEL_QUERY  = os.path.expanduser("~/whisper.cpp/models/ggml-small.bin")             # small fp32 (~5s en GPU1 con flash-attn)
 LLAMA_SERVER    = os.path.expanduser("~/llama.cpp/build/bin/llama-server")
 LLAMA_MODEL     = os.path.expanduser("~/llama.cpp/models/Qwen3-8B-Q4_K_M.gguf")
 PIPER_BIN       = os.path.expanduser("~/coramo-env/bin/piper")
@@ -46,10 +46,9 @@ PIPER_MODEL     = os.path.expanduser("~/piper-voices/es_ES-davefx-medium.onnx")
 AUDIO_DEVICE    = "default"
 
 # -- GPU assignment ----------------------------------------------------------
-# llama-server ve todas las GPUs, tensor-split 1,1,0,0 asigna solo GPU0+GPU1 (ambas RX580)
-# whisper usa GPU1 (GGML_VK_VISIBLE_DEVICES=1) bajo demanda
+# llama-server usa GPU0 (Vulkan0), whisper-cli usa GPU1 (GGML_VK_VISIBLE_DEVICES=1)
 WHISPER_GPU_ENV = {"GGML_VK_VISIBLE_DEVICES": "1"}
-LLAMA_GPU_ENV   = {}  # sin restriccion: llama-server ve todas las Vulkan GPUs
+LLAMA_GPU_ENV   = {}
 
 # -- llama-server settings ---------------------------------------------------
 LLAMA_HOST = "127.0.0.1"
