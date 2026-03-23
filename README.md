@@ -23,11 +23,12 @@ Pipeline completo de voz a voz con control de hardware:
 
 ```
 Micrófono → Silero VAD (CPU, detecta habla)
-          → whisper medium-q5_0 (GPU 1, transcripción)
+          → whisper small (GPU 1, ~5s transcripción)
           → check "coramo" en texto → descarta si no está
-          → Qwen3-8B Q4_K_M (GPU 0, LLM)
-          → function calling → Arduino Mega → PCA9685 → mano robótica (5 servos)
-          → Piper TTS (CPU, es_ES-davefx)
+          → Qwen3-4B Q4_K_M (GPU 0, ~1s inferencia)
+          → tool_choice=required → mover_dedo/gesto/responder
+          → Arduino Mega → PCA9685 → mano robótica (5 servos)  [si acción física]
+          → Piper TTS (CPU, es_ES-davefx)                       [si respuesta verbal]
           → Altavoz
 ```
 
@@ -43,7 +44,8 @@ Micrófono → Silero VAD (CPU, detecta habla)
 - Silero VAD — corta la grabación en cuanto el usuario deja de hablar (~1s de silencio), eliminando las esperas fijas de 8–14s.
 - Overlap transcripción+grabación — mientras se graba la continuación (VAD, CPU), la transcripción del chunk inicial (GPU 1) corre en paralelo via `ThreadPoolExecutor`, reduciendo ~1-3s de latencia.
 - KV cache warmup — al arrancar, el system prompt se pre-calienta en el KV cache. Las peticiones al LLM solo procesan los tokens del usuario.
-- Eliminado double request — la respuesta LLM sin tool_calls se habla directamente sin re-pedir al servidor, ahorrando ~1-2s por interacción.
+- Sin TTS para comandos físicos — los gestos y movimientos de dedo se ejecutan sin síntesis de voz, eliminando ~2s de latencia por comando.
+- tool_choice=required + tool responder() — el LLM siempre llama una tool, eliminando el fallo intermitente finish_reason=stop.
 
 ## Configuración del kernel
 
@@ -85,9 +87,9 @@ amdgpu.num_kcq=0 amdgpu.lockup_timeout=180000
 - [x] Kernel con soporte amdgpu
 - [x] Dos GPU RX 580 operativas
 - [x] Salida de video por GPU
-- [x] Whisper medium-q5_0 en GPU 1 (~8s transcripción)
+- [x] Whisper small en GPU 1 (~5s transcripción)
 - [x] Pipeline simplificado: VAD → Whisper → check "coramo" → LLM (sin openWakeWord)
-- [x] LLM Qwen3-8B Q4_K_M con GPU 0 (llama-server --device Vulkan0, --parallel 1, --cache-ram 0)
+- [x] LLM Qwen3-4B Q4_K_M con GPU 0 (~1s inferencia)
 - [x] Piper TTS en español
 - [x] Function calling → mano robótica 5 dedos via Arduino Mega + PCA9685
 - [x] Gestos: abre/cierra mano y control de dedo individual
@@ -95,4 +97,6 @@ amdgpu.num_kcq=0 amdgpu.lockup_timeout=180000
 - [x] amdgpu.lockup_timeout=180000 para prevenir crash de llama-server por ring gfx timeout
 - [x] Overlap transcripción+grabación (ThreadPoolExecutor) para reducir latencia
 - [x] KV cache warmup del system prompt al arrancar
-- [x] Eliminado double request LLM en respuestas sin tool_calls
+- [x] Eliminado TTS para comandos físicos exitosos (menor latencia)
+- [x] tool_choice=required + tool responder() — LLM siempre llama una tool, sin finish_reason=stop
+- [x] Fuzzy fallback en extract_question — "coramos" → extrae correctamente el comando

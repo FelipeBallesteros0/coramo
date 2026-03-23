@@ -120,6 +120,7 @@ def warmup_llm_cache() -> None:
     try:
         payload = json.dumps({
             "messages": [{"role": "system", "content": SYSTEM_MSG}],
+            "tools": TOOLS,
             "max_tokens": 1,
             "stream": False,
         }).encode()
@@ -194,20 +195,32 @@ TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "responder",
+            "description": (
+                "Responde al usuario con texto cuando no se requiere accion fisica. "
+                "Usar para: preguntas generales, informacion, conversacion, saludos, todo lo que no mueve la mano."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "texto": {"type": "string", "description": "Respuesta en texto para el usuario. Maximo 2 oraciones, sin markdown."},
+                },
+                "required": ["texto"],
+            },
+        },
+    },
 ]
 
 SYSTEM_MSG = (
     "Eres CORAMO, un robot de doble brazo con una mano robotica de 5 dedos. "
-    "Asistes al usuario en cualquier tarea: fisica, tecnica, conversacional o de conocimiento general. "
-    "Puedes responder preguntas sobre cocina, ciencia, historia, tecnologia, recetas, matematicas y cualquier otro tema. "
-    "Hablas de forma clara, natural y util. "
-    "Priorizas siempre la seguridad de las personas, la proteccion del entorno y la integridad del sistema. "
-    "CORAMO significa Colaborativo, Reprogramable, Autonomo y Modular. "
-    "Fuiste creado por Felipe Ballesteros Leon. "
-    "Para acciones fisicas (mover dedos, gestos) SIEMPRE usa las tools disponibles, nunca respondas solo con texto. "
-    "Tras ejecutar una tool, confirma en 1 oracion corta (ej: 'Mano cerrada.'). "
-    "Para preguntas, maximo 2 oraciones. NUNCA agregues frases de relleno como 'Estoy listo', '¿En que puedo ayudarte?'. "
-    "Texto plano sin listas ni markdown. /no_think"
+    "SIEMPRE debes llamar exactamente una tool por mensaje: "
+    "usa mover_dedo o gesto para acciones fisicas, usa responder para todo lo demas (preguntas, conversacion, confirmaciones). "
+    "Priorizas la seguridad de las personas y la integridad del sistema. "
+    "CORAMO significa Colaborativo, Reprogramable, Autonomo y Modular. Creado por Felipe Ballesteros Leon. "
+    "Respuestas cortas: maximo 2 oraciones. Sin markdown. /no_think"
 )
 
 
@@ -233,12 +246,18 @@ def call_tool(name: str, args: dict) -> str:
             return f"Gesto '{nombre}' ejecutado."
         return f"Error: {result.get('error', 'desconocido')}"
 
+    if name == "responder":
+        texto = args.get("texto", "")
+        log(f"  [tool] responder: '{texto[:80]}'")
+        speak(texto)
+        return "ok"
+
     return f"Tool desconocida: {name}"
 
 
 def _llm_request(messages: list, stream: bool, extra: dict = None) -> dict | str:
     """Hace una peticion a llama-server. Reintenta una vez si el servidor cae (503)."""
-    payload = {"messages": messages, "temperature": 0.1, "max_tokens": 120, "stream": stream}
+    payload = {"messages": messages, "temperature": 0.0, "max_tokens": 120, "stream": stream}
     if extra:
         payload.update(extra)
     data_bytes = json.dumps(payload).encode()
@@ -326,7 +345,7 @@ def ask_llm(question: str) -> None:
 
     # Primera llamada sin stream para detectar tool calls
     log("  [llm] esperando respuesta...")
-    data = _llm_request(messages, stream=False, extra={"tools": TOOLS, "tool_choice": "auto"})
+    data = _llm_request(messages, stream=False, extra={"tools": TOOLS, "tool_choice": "required"})
     msg = data["choices"][0]["message"]
     finish = data["choices"][0]["finish_reason"]
     log(f"  [llm] finish_reason={finish}")
@@ -471,21 +490,25 @@ def contains_wake_word(text: str) -> bool:
 
 def extract_question(text: str) -> str:
     """Extrae el texto posterior a la wake word."""
+    import difflib
     normalized = re.sub(r"[^\w\s]", "", text.lower())
     for ww in sorted(WAKE_WORDS, key=len, reverse=True):  # mas largo primero
         # Usar word boundary para no hacer match dentro de "coramos", etc.
         m = re.search(r'\b' + re.escape(ww) + r'\b', normalized)
         if m:
-            idx = m.end()
-            remainder_norm = normalized[idx:].strip()
+            remainder_norm = normalized[m.end():].strip()
             remainder_text = text[m.end():].strip(" ,.-\n")
-            # Si hay una segunda wake word, cortar ahi
             for ww2 in WAKE_WORDS:
                 m2 = re.search(r'\b' + re.escape(ww2) + r'\b', remainder_norm)
                 if m2:
                     remainder_text = remainder_text[:m2.start()].strip(" ,.-\n")
                     break
             return remainder_text
+    # Fuzzy fallback: "coramos" → extrae lo que viene despues
+    words_norm = normalized.split()
+    for i, word in enumerate(words_norm):
+        if len(word) >= 5 and difflib.SequenceMatcher(None, word, "coramo").ratio() >= 0.80:
+            return " ".join(words_norm[i + 1:])
     return ""
 
 
