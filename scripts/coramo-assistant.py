@@ -1,7 +1,7 @@
 #!/home/felipe/coramo-env/bin/python3
 """
 Coramo Voice Assistant
-Pipeline: openWakeWord (CPU) -> VAD (CPU) -> whisper large-v3-turbo (GPU 1) -> Qwen3-8B (GPU 0) -> Piper TTS
+Pipeline: VAD (CPU) -> whisper medium-q5_0 (GPU 1) -> check "coramo" -> Qwen3-8B (GPU 0) -> Piper TTS
 Function calling: mover_dedo(dedo,angulo) / gesto(nombre) -> PCA9685 -> mano robotica
 Logs guardados en ~/coramo-debug.log para diagnostico post-crash.
 """
@@ -17,14 +17,12 @@ import wave
 import urllib.request
 import signal
 import atexit
-import collections
 import difflib
 import numpy as np
 import scipy.io.wavfile
 import torch
 import concurrent.futures
 from silero_vad import load_silero_vad, VADIterator, get_speech_timestamps
-from openwakeword.model import Model as WakeWordModel
 sys.path.insert(0, os.path.dirname(__file__))
 import arduino
 
@@ -38,7 +36,6 @@ def log(msg: str) -> None:
 
 # -- Paths -------------------------------------------------------------------
 WHISPER_BIN          = os.path.expanduser("~/whisper.cpp/build/bin/whisper-cli")
-WHISPER_MODEL_WAKE   = os.path.expanduser("~/whisper.cpp/models/ggml-small.bin")           # rapido para wake word
 WHISPER_MODEL_QUERY  = os.path.expanduser("~/whisper.cpp/models/ggml-medium-q5_0.bin")      # medium cuantizado q5_0 (515MB, ~8s)
 LLAMA_SERVER    = os.path.expanduser("~/llama.cpp/build/bin/llama-server")
 LLAMA_MODEL     = os.path.expanduser("~/llama.cpp/models/Qwen3-8B-Q4_K_M.gguf")
@@ -62,17 +59,9 @@ LLAMA_URL  = f"http://{LLAMA_HOST}:{LLAMA_PORT}"
 # -- Wake words --------------------------------------------------------------
 WAKE_WORDS = ["coramo", "hola coramo", "hey coramo", "oye coramo"]
 
-# -- openWakeWord ------------------------------------------------------------
-OWW_MODEL_PATH    = os.path.expanduser("~/coramo/models/coramo.onnx")
-OWW_THRESHOLD     = 0.97   # score minimo para activar (requiere sustain consecutivo)
-OWW_CHUNK_SAMPLES = 1280   # 80ms a 16kHz (requerido por openWakeWord)
-OWW_BUFFER_CHUNKS = 20     # buffer de audio para confirmacion (~1.6s)
-OWW_SUSTAIN_FRAMES = 3     # frames consecutivos requeridos para activar (~240ms)
-
 # -- Audio settings ----------------------------------------------------------
 SAMPLE_RATE        = 16000
 CHANNELS           = 1
-CHUNK_SECONDS      = 6    # chunk para wake word detection (mantenido para fallback)
 
 # -- Silero VAD settings -------------------------------------------------------
 VAD_SILENCE_MS          = 1000   # ms de silencio para considerar fin de habla
@@ -93,9 +82,6 @@ _vad = VADIterator(
     min_silence_duration_ms=VAD_SILENCE_MS,
     speech_pad_ms=100,
 )
-
-# -- openWakeWord (inicializado una vez, corre en CPU) ------------------------
-_oww = WakeWordModel(wakeword_models=[OWW_MODEL_PATH], inference_framework="onnx")
 
 
 def start_llm_server() -> None:
@@ -443,7 +429,7 @@ def record_wav(filename: str, seconds: int) -> None:
 
 def transcribe(audio_file: str, model: str = None) -> str:
     if model is None:
-        model = WHISPER_MODEL_WAKE
+        model = WHISPER_MODEL_QUERY
     env = {**os.environ, **WHISPER_GPU_ENV}
     cmd = [
         WHISPER_BIN,
@@ -453,9 +439,6 @@ def transcribe(audio_file: str, model: str = None) -> str:
         "--no-prints",
         "-nt",
     ]
-    # Para el modelo de wake word, sesgar hacia "Coramo" via prompt inicial
-    if model == WHISPER_MODEL_WAKE:
-        cmd += ["--prompt", "Coramo,"]
     result = subprocess.run(cmd, capture_output=True, text=True, env=env)
     if result.returncode != 0:
         log(f"  [whisper error] rc={result.returncode} stderr={result.stderr[:200]}")
@@ -539,109 +522,55 @@ def _audio_has_speech(wav_file: str, min_ratio: float = 0.05) -> bool:
 
 def listen_for_wake_word() -> None:
     log("Coramo escuchando... (di 'coramo' para activar)")
-    chunk_bytes = OWW_CHUNK_SAMPLES * 2  # int16 = 2 bytes por muestra
-    audio_buf   = collections.deque(maxlen=OWW_BUFFER_CHUNKS)
-
-    def _start_arecord():
-        return subprocess.Popen([
-            "arecord", "-q",
-            "-D", AUDIO_DEVICE,
-            "-f", "S16_LE",
-            "-r", str(SAMPLE_RATE),
-            "-c", str(CHANNELS),
-            "-t", "raw",
-        ], stdout=subprocess.PIPE)
-
-    proc = _start_arecord()
-    consec_above = 0
+    audio_file = tempfile.mktemp(suffix=".wav")
     try:
         while True:
-            raw = proc.stdout.read(chunk_bytes)
-            if len(raw) < chunk_bytes:
-                log("  [oww] stream cortado, reiniciando...")
-                proc.terminate(); proc.wait()
-                proc = _start_arecord()
-                consec_above = 0
-                continue
+            try:
+                _, has_speech = record_until_silence(audio_file)
+                if not has_speech:
+                    continue
 
-            audio_chunk = np.frombuffer(raw, dtype=np.int16)
-            audio_buf.append(audio_chunk)
-            scores = _oww.predict(audio_chunk)
-            score  = scores.get("coramo", 0.0)
+                log("Transcribiendo...")
+                full_text = transcribe(audio_file, model=WHISPER_MODEL_QUERY)
+                log(f"  [transcripcion] '{full_text}'")
 
-            if score >= OWW_THRESHOLD:
-                consec_above += 1
-            else:
-                consec_above = 0
+                if not contains_wake_word(full_text):
+                    log("  [ignorado] no contiene wake word")
+                    continue
 
-            if consec_above >= OWW_SUSTAIN_FRAMES:
-                consec_above = 0
-                log(f"  [oww] score={score:.3f} sostenido {OWW_SUSTAIN_FRAMES} frames — wake word!")
-                proc.terminate(); proc.wait()
+                question_text = extract_question(full_text) or full_text
+                question_text = question_text.strip()
+                log(f"Pregunta: '{question_text}'")
 
-                buf_file  = tempfile.mktemp(suffix=".wav")
-                cont_file = tempfile.mktemp(suffix=".wav")
-                combined  = tempfile.mktemp(suffix=".wav")
-                try:
-                    # Guardar el buffer actual (contiene la frase dicha junto con "coramo")
-                    buf_samples = np.concatenate(list(audio_buf))
-                    with wave.open(buf_file, "wb") as wf:
-                        wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(SAMPLE_RATE)
-                        wf.writeframes(buf_samples.tobytes())
+                if question_text:
+                    ensure_llm_server()
+                    log("Enviando al LLM...")
+                    try:
+                        ask_llm(question_text)
+                    except Exception as e:
+                        log(f"  [error en LLM] {type(e).__name__}: {e}")
+                        speak("Tuve un problema, intentalo de nuevo.")
+                else:
+                    speak("Dime")
 
-                    # Seguir grabando por si el usuario no terminó aún
-                    log("Escuchando continuacion (VAD)...")
-                    _, cont_has_speech = record_until_silence(cont_file)
+            except Exception as e:
+                log(f"  [error procesando] {type(e).__name__}: {e}")
+                speak("Tuve un problema, intentalo de nuevo.")
 
-                    # Combinar buffer + continuacion
-                    concat_wav(buf_file, cont_file, combined)
-
-                    log("Transcribiendo pregunta...")
-                    full_text = transcribe(combined, model=WHISPER_MODEL_QUERY)
-                    log(f"  [transcripcion] '{full_text}'")
-
-                    # Extraer solo la parte posterior a la wake word
-                    question_text = extract_question(full_text) or full_text
-                    question_text = question_text.strip()
-                    log(f"Pregunta: '{question_text}'")
-
-                    if question_text:
-                        ensure_llm_server()
-                        log("Enviando al LLM...")
-                        try:
-                            ask_llm(question_text)
-                        except Exception as e:
-                            log(f"  [error en LLM] {type(e).__name__}: {e}")
-                            speak("Tuve un problema, intentalo de nuevo.")
-                    else:
-                        speak("Dime")
-                except Exception as e:
-                    log(f"  [error procesando pregunta] {type(e).__name__}: {e}")
-                    speak("Tuve un problema, intentalo de nuevo.")
-                finally:
-                    for f in (buf_file, cont_file, combined):
-                        if os.path.exists(f):
-                            os.remove(f)
-
-                log("Volviendo a escuchar...")
-                proc = _start_arecord()
+            log("Volviendo a escuchar...")
 
     except KeyboardInterrupt:
         log("Coramo detenido.")
         sys.exit(0)
-    except Exception as e:
-        log(f"Error inesperado: {type(e).__name__}: {e}")
-        time.sleep(1)
     finally:
-        if proc.poll() is None:
-            proc.terminate(); proc.wait()
+        if os.path.exists(audio_file):
+            os.remove(audio_file)
 
 
 if __name__ == "__main__":
     for path, name in [
-        (OWW_MODEL_PATH,      "openWakeWord model (coramo.onnx)"),
         (WHISPER_BIN,         "whisper-cli"),
-        (WHISPER_MODEL_QUERY, "whisper model (query)"),
+        (WHISPER_MODEL_QUERY, "whisper model"),
         (LLAMA_SERVER,  "llama-server"),
         (LLAMA_MODEL,   "Qwen3 model"),
         (PIPER_BIN,     "piper"),
