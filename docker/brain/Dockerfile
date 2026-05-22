@@ -3,7 +3,7 @@ FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update && apt-get install -y \
-    python3.11 python3.11-dev python3-pip \
+    python3 python3-dev python3-pip \
     cmake build-essential git \
     alsa-utils libasound2-dev \
     libsndfile1 libsndfile1-dev \
@@ -20,7 +20,7 @@ RUN cd /whisper.cpp && \
     cmake --build build -j8 --target whisper-cli
 
 COPY docker/brain/requirements.txt /app/requirements.txt
-RUN python3.11 -m pip install --no-cache-dir -r /app/requirements.txt
+RUN python3 -m pip install --no-cache-dir -r /app/requirements.txt
 
 # Piper TTS binario precompilado para x86_64 Linux
 RUN curl -fsSL "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz" \
@@ -41,4 +41,4 @@ ENV OWW_MODEL=/models/coramo.onnx
 ENV MANAGED_LLM=false
 ENV CORAMO_LOG=/tmp/coramo-debug.log
 
-CMD ["python3.11", "scripts/coramo-assistant.py"]
+CMD ["python3", "scripts/coramo-assistant.py"]
