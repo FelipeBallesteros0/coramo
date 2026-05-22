@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -19,7 +19,7 @@ RUN cd /whisper.cpp && \
       -DCMAKE_BUILD_TYPE=Release && \
     cmake --build build -j8 --target whisper-cli
 
-COPY requirements.txt /app/requirements.txt
+COPY docker/brain/requirements.txt /app/requirements.txt
 RUN python3.11 -m pip install --no-cache-dir -r /app/requirements.txt
 
 # Piper TTS binario precompilado para x86_64 Linux

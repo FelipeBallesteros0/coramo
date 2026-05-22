@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y \
     cmake build-essential git \
     libvulkan-dev vulkan-tools \
     mesa-vulkan-drivers \
+    spirv-headers spirv-tools glslang-tools glslc \
     libgomp1 \
     curl \
     && rm -rf /var/lib/apt/lists/*
