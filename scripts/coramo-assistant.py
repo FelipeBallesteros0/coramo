@@ -1,9 +1,10 @@
-#!/home/felipe/coramo-env/bin/python3
+#!/usr/bin/env python3
 """
 Coramo Voice Assistant
-Pipeline: VAD (CPU) -> whisper small (GPU 1) -> check "coramo" -> Qwen3-4B (GPU 0) -> Piper TTS
+Pipeline: VAD (CPU) -> whisper small (CPU) -> check "coramo" -> LLM HTTP -> Piper TTS
 Function calling: mover_dedo(dedo,angulo) / gesto(nombre) -> PCA9685 -> mano robotica
 Logs guardados en ~/coramo-debug.log para diagnostico post-crash.
+MANAGED_LLM=false: el LLM corre en contenedor separado, no se gestiona aqui.
 """
 
 import os
@@ -27,7 +28,8 @@ sys.path.insert(0, os.path.dirname(__file__))
 import arduino
 
 # -- Log a archivo para sobrevivir crashes -----------------------------------
-_log_file = open("/home/felipe/coramo-debug.log", "w", buffering=1)
+_log_path = os.environ.get("CORAMO_LOG", os.path.expanduser("~/coramo-debug.log"))
+_log_file = open(_log_path, "w", buffering=1)
 
 def log(msg: str) -> None:
     line = f"[{time.strftime('%H:%M:%S')}] {msg}"
@@ -35,19 +37,29 @@ def log(msg: str) -> None:
     _log_file.write(line + "\n")
 
 # -- Paths -------------------------------------------------------------------
-WHISPER_BIN          = os.path.expanduser("~/whisper.cpp/build/bin/whisper-cli")
-WHISPER_MODEL_QUERY  = os.path.expanduser("~/whisper.cpp/models/ggml-small.bin")             # small fp32 (~5s en GPU1, base da errores en espanol)
-LLAMA_SERVER    = os.path.expanduser("~/llama.cpp/build/bin/llama-server")
-LLAMA_MODEL     = os.path.expanduser("~/llama.cpp/models/Qwen3-4B-Q4_K_M.gguf")
-PIPER_BIN       = os.path.expanduser("~/coramo-env/bin/piper")
-PIPER_MODEL     = os.path.expanduser("~/piper-voices/es_ES-davefx-medium.onnx")
+WHISPER_BIN         = os.environ.get("WHISPER_BIN",
+                          os.path.expanduser("~/whisper.cpp/build/bin/whisper-cli"))
+WHISPER_MODEL_QUERY = os.environ.get("WHISPER_MODEL",
+                          os.path.expanduser("~/whisper.cpp/models/ggml-small.bin"))
+LLAMA_SERVER        = os.environ.get("LLAMA_SERVER",
+                          os.path.expanduser("~/llama.cpp/build/bin/llama-server"))
+LLAMA_MODEL         = os.environ.get("LLAMA_MODEL",
+                          os.path.expanduser("~/llama.cpp/models/Qwen3-4B-Q4_K_M.gguf"))
+PIPER_BIN           = os.environ.get("PIPER_BIN",
+                          os.path.expanduser("~/coramo-env/bin/piper"))
+PIPER_MODEL         = os.environ.get("PIPER_MODEL",
+                          os.path.expanduser("~/piper-voices/es_ES-davefx-medium.onnx"))
+# Si True, este proceso gestiona llama-server. Si False, el LLM ya esta corriendo externamente.
+MANAGED_LLM         = os.environ.get("MANAGED_LLM", "true").lower() == "true"
 
 # -- Audio device ------------------------------------------------------------
 AUDIO_DEVICE    = "default"
 
 # -- GPU assignment ----------------------------------------------------------
-# llama-server usa GPU0 (Vulkan0), whisper-cli usa GPU1 (GGML_VK_VISIBLE_DEVICES=1)
-WHISPER_GPU_ENV = {"GGML_VK_VISIBLE_DEVICES": "1"}
+# En Docker (Opcion A): whisper corre en CPU puro, LLM en contenedor separado con ambas GPUs.
+# En modo local original: whisper usaba GPU1, LLM usaba GPU0.
+_whisper_gpu = os.environ.get("WHISPER_GPU_DEVICE", "")  # vacio = CPU
+WHISPER_GPU_ENV = {"GGML_VK_VISIBLE_DEVICES": _whisper_gpu} if _whisper_gpu else {}
 LLAMA_GPU_ENV   = {}
 
 # -- llama-server settings ---------------------------------------------------
@@ -603,19 +615,27 @@ def listen_for_wake_word() -> None:
 
 
 if __name__ == "__main__":
-    for path, name in [
+    # Binarios que siempre deben existir en este proceso
+    local_checks = [
         (WHISPER_BIN,         "whisper-cli"),
         (WHISPER_MODEL_QUERY, "whisper model"),
-        (LLAMA_SERVER,  "llama-server"),
-        (LLAMA_MODEL,   "Qwen3 model"),
-        (PIPER_BIN,     "piper"),
-        (PIPER_MODEL,   "piper voice"),
-    ]:
+        (PIPER_BIN,           "piper"),
+        (PIPER_MODEL,         "piper voice"),
+    ]
+    # Solo verificar binarios LLM si este proceso los gestiona
+    if MANAGED_LLM:
+        local_checks += [
+            (LLAMA_SERVER, "llama-server"),
+            (LLAMA_MODEL,  "Qwen3 model"),
+        ]
+
+    for path, name in local_checks:
         if not os.path.exists(path):
             log(f"ERROR: No encontrado: {name} -> {path}")
             sys.exit(1)
 
-    atexit.register(stop_llm_server)
+    if MANAGED_LLM:
+        atexit.register(stop_llm_server)
     atexit.register(arduino.disconnect)
     signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
@@ -625,6 +645,21 @@ if __name__ == "__main__":
     else:
         log("ADVERTENCIA: Arduino no disponible, function calling desactivado.")
 
-    start_llm_server()
-    warmup_llm_cache()
+    if MANAGED_LLM:
+        start_llm_server()
+        warmup_llm_cache()
+    else:
+        log(f"Modo Docker: LLM externo en {LLAMA_URL}, esperando disponibilidad...")
+        for _ in range(120):
+            try:
+                urllib.request.urlopen(f"{LLAMA_URL}/health", timeout=2)
+                log("LLM listo.")
+                break
+            except Exception:
+                time.sleep(1)
+        else:
+            log(f"ERROR: LLM no respondio en 120s en {LLAMA_URL}")
+            sys.exit(1)
+        warmup_llm_cache()
+
     listen_for_wake_word()
