@@ -355,10 +355,14 @@ def ask_llm(question: str) -> None:
 
     # Primera llamada sin stream para detectar tool calls
     log("  [llm] esperando respuesta...")
+    t0 = time.perf_counter()
     data = _llm_request(messages, stream=False, extra={"tools": TOOLS, "tool_choice": "required"})
+    t_llm = (time.perf_counter() - t0) * 1000
     msg = data["choices"][0]["message"]
     finish = data["choices"][0]["finish_reason"]
+    tokens_out = data.get("usage", {}).get("completion_tokens", "?")
     log(f"  [llm] finish_reason={finish}")
+    log(f"  [TIMING] llm: {t_llm:.0f}ms | tokens_out={tokens_out}")
 
     if finish == "tool_calls" and msg.get("tool_calls"):
         # Ejecutar tools — sin TTS si todas son acciones de hardware
@@ -410,6 +414,7 @@ def record_until_silence(filename: str) -> tuple[float, bool]:
     speech_ms = 0.0
     elapsed_ms = 0.0
     max_ms = VAD_MAX_SECS * 1000
+    _t_speech_start = None
 
     proc = subprocess.Popen([
         "arecord", "-q",
@@ -434,6 +439,7 @@ def record_until_silence(filename: str) -> tuple[float, bool]:
             if result:
                 if "start" in result:
                     speech_detected = True
+                    _t_speech_start = time.perf_counter()
                     log("  [vad] habla detectada")
                 if "end" in result and speech_detected and speech_ms >= VAD_MIN_SPEECH_MS:
                     log(f"  [vad] silencio detectado tras {elapsed_ms:.0f}ms")
@@ -494,8 +500,9 @@ def _build_multipart(audio_bytes: bytes, filename: str, language: str) -> bytes:
 
 def transcribe(audio_file: str, model: str = None) -> str:
     if WHISPER_SERVER_URL:
-        # Modelo permanece en VRAM — sin costo de carga por llamada
+        # Modelo permanente en VRAM — sin costo de carga por llamada
         try:
+            t0 = time.perf_counter()
             with open(audio_file, "rb") as f:
                 resp = urllib.request.urlopen(
                     urllib.request.Request(
@@ -506,6 +513,7 @@ def transcribe(audio_file: str, model: str = None) -> str:
                     timeout=60,
                 )
             data = json.loads(resp.read())
+            log(f"  [TIMING] whisper-server: {(time.perf_counter()-t0)*1000:.0f}ms")
             return data.get("text", "").strip()
         except Exception as e:
             log(f"  [whisper-server error] {e} — fallback a subprocess")
@@ -513,11 +521,13 @@ def transcribe(audio_file: str, model: str = None) -> str:
     # Fallback: subprocess (carga el modelo en cada llamada)
     if model is None:
         model = WHISPER_MODEL_QUERY
+    t0 = time.perf_counter()
     env = {**os.environ, **WHISPER_GPU_ENV}
     result = subprocess.run(
         [WHISPER_BIN, "-m", model, "-f", audio_file, "-l", "es", "--no-prints", "-nt"],
         capture_output=True, text=True, env=env,
     )
+    log(f"  [TIMING] whisper-subprocess: {(time.perf_counter()-t0)*1000:.0f}ms")
     if result.returncode != 0:
         log(f"  [whisper error] rc={result.returncode} stderr={result.stderr[:200]}")
     return result.stdout.strip()
@@ -585,19 +595,24 @@ def speak(text: str) -> None:
     try:
         with open(txt_file, "w") as f:
             f.write(text)
-        log("  [speak] sintetizando con piper...")
+        t0 = time.perf_counter()
         with open(txt_file) as stdin:
             result = subprocess.run(
                 [PIPER_BIN, "--model", PIPER_MODEL, "--output_file", wav_file],
                 stdin=stdin,
                 capture_output=True,
             )
+        t_piper = (time.perf_counter() - t0) * 1000
         if result.returncode != 0:
             log(f"  [piper error] rc={result.returncode} stderr={result.stderr.decode()[:200]}")
             return
-        log("  [speak] reproduciendo audio...")
+        # Calcular duracion del audio generado
+        with wave.open(wav_file) as wf:
+            audio_ms = wf.getnframes() / wf.getframerate() * 1000
+        log(f"  [TIMING] piper: {t_piper:.0f}ms → audio: {audio_ms:.0f}ms")
+        t1 = time.perf_counter()
         subprocess.run(["aplay", "-q", "-D", AUDIO_DEVICE, wav_file], check=True)
-        log("  [speak] listo.")
+        log(f"  [TIMING] aplay: {(time.perf_counter()-t1)*1000:.0f}ms")
     finally:
         for f in (wav_file, txt_file):
             if os.path.exists(f):
@@ -625,11 +640,15 @@ def listen_for_wake_word() -> None:
     try:
         while True:
             try:
+                t_rec_start = time.perf_counter()
                 _, has_speech = record_until_silence(audio_file)
+                t_rec_end = time.perf_counter()
                 if not has_speech:
                     continue
+                log(f"  [TIMING] grabacion: {(t_rec_end-t_rec_start)*1000:.0f}ms")
 
                 log("Transcribiendo...")
+                t_tr_start = time.perf_counter()
                 full_text = transcribe(audio_file, model=WHISPER_MODEL_QUERY)
                 log(f"  [transcripcion] '{full_text}'")
 
@@ -644,11 +663,14 @@ def listen_for_wake_word() -> None:
                 if question_text:
                     ensure_llm_server()
                     log("Enviando al LLM...")
+                    t_llm_start = time.perf_counter()
                     try:
                         ask_llm(question_text)
                     except Exception as e:
                         log(f"  [error en LLM] {type(e).__name__}: {e}")
                         speak("Tuve un problema, intentalo de nuevo.")
+                    log(f"  [TIMING] respuesta completa (llm+tts+play): {(time.perf_counter()-t_llm_start)*1000:.0f}ms")
+                    log(f"  [TIMING] TOTAL fin-habla→fin-respuesta: {(time.perf_counter()-t_rec_end)*1000:.0f}ms")
                 else:
                     speak("Dime")
 
