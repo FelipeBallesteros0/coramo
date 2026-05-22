@@ -269,7 +269,7 @@ def call_tool(name: str, args: dict) -> str:
 
 def _llm_request(messages: list, stream: bool, extra: dict = None) -> dict | str:
     """Hace una peticion a llama-server. Reintenta una vez si el servidor cae (503)."""
-    payload = {"messages": messages, "temperature": 0.0, "max_tokens": 120, "stream": stream}
+    payload = {"messages": messages, "temperature": 0.0, "max_tokens": 300, "stream": stream}
     if extra:
         payload.update(extra)
     data_bytes = json.dumps(payload).encode()
@@ -376,8 +376,15 @@ def ask_llm(question: str) -> None:
             resp = _llm_request(messages, stream=True)
             _stream_speak(resp)
     else:
-        # Respuesta normal — usar el contenido ya obtenido, sin segunda peticion
+        # finish_reason=length o respuesta sin tool_calls
         content = msg.get("content", "").strip()
+        # Eliminar bloques <think>...</think> y etiquetas sueltas de Qwen3
+        content = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL)
+        content = re.sub(r"</?think>", "", content).strip()
+        # Si el LLM generó texto crudo de tool call (truncado), extraer solo el texto
+        if re.match(r"(responder|mover_dedo|gesto)\s*\n", content):
+            m = re.search(r'"texto"\s*:\s*"(.*?)(?="\s*}|$)', content, re.DOTALL)
+            content = m.group(1).replace('\\"', '"').replace("\\n", " ").strip() if m else ""
         if content:
             _speak_sentences(content)
 
@@ -617,6 +624,7 @@ def listen_for_wake_word() -> None:
                 speak("Tuve un problema, intentalo de nuevo.")
 
             log("Volviendo a escuchar...")
+            time.sleep(2.0)  # Anti-echo: esperar que el parlante no se escuche a si mismo
 
     except KeyboardInterrupt:
         log("Coramo detenido.")
