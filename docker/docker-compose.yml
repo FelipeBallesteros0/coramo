@@ -50,7 +50,6 @@ services:
         condition: service_healthy
     devices:
       - /dev/snd
-      - /dev/ttyUSB0
     group_add:
       - audio
       - dialout
