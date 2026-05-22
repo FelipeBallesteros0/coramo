@@ -62,7 +62,7 @@ services:
       - WHISPER_MODEL=/models/ggml-small.bin
       - LLAMA_HOST=127.0.0.1
       - LLAMA_PORT=8080
-      - PIPER_BIN=/usr/local/bin/piper
+      - PIPER_BIN=/usr/local/piper/piper
       - PIPER_MODEL=/voices/es_ES-davefx-medium.onnx
       - OWW_MODEL=/models/coramo.onnx
       - MANAGED_LLM=false

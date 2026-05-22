@@ -22,10 +22,9 @@ RUN cd /whisper.cpp && \
 COPY docker/brain/requirements.txt /app/requirements.txt
 RUN python3 -m pip install --no-cache-dir --break-system-packages -r /app/requirements.txt
 
-# Piper TTS binario precompilado para x86_64 Linux
-RUN curl -fsSL "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz" \
-    | tar xz -C /usr/local/ && \
-    ln -s /usr/local/piper/piper /usr/local/bin/piper
+# Piper TTS binario precompilado (descargado al host antes del build)
+COPY docker/brain/piper/piper /usr/local/piper/
+ENV LD_LIBRARY_PATH=/usr/local/piper:$LD_LIBRARY_PATH
 
 COPY scripts/ /app/scripts/
 
@@ -35,7 +34,7 @@ ENV WHISPER_BIN=/whisper.cpp/build/bin/whisper-cli
 ENV WHISPER_MODEL=/models/ggml-small.bin
 ENV LLAMA_HOST=127.0.0.1
 ENV LLAMA_PORT=8080
-ENV PIPER_BIN=/usr/local/bin/piper
+ENV PIPER_BIN=/usr/local/piper/piper
 ENV PIPER_MODEL=/voices/es_ES-davefx-medium.onnx
 ENV OWW_MODEL=/models/coramo.onnx
 ENV MANAGED_LLM=false
