@@ -232,7 +232,7 @@ SYSTEM_MSG = (
     "usa mover_dedo o gesto para acciones fisicas, usa responder para todo lo demas (preguntas, conversacion, confirmaciones). "
     "Priorizas la seguridad de las personas y la integridad del sistema. "
     "CORAMO significa Colaborativo, Reprogramable, Autonomo y Modular. Creado por Felipe Ballesteros Leon. "
-    "Respuestas cortas: maximo 2 oraciones. Sin markdown. /no_think"
+    "Respuestas cortas: maximo 1 oracion. Sin markdown. Sin emojis. /no_think"
 )
 
 
@@ -322,12 +322,10 @@ def _stream_speak(resp) -> None:
             sentence = sentence_buf[:match.end()].strip()
             sentence_buf = sentence_buf[match.end():]
             if sentence:
-                log(f"  [stream] '{sentence[:60]}'")
                 speak(sentence)
 
     # Resto sin punto final
     if sentence_buf.strip():
-        log(f"  [stream] '{sentence_buf.strip()[:60]}'")
         speak(sentence_buf.strip())
 
 
@@ -341,7 +339,6 @@ def _speak_sentences(text: str) -> None:
             sentence = buf[:match.end()].strip()
             buf = buf[match.end():]
             if sentence:
-                log(f"  [speak] '{sentence[:60]}'")
                 speak(sentence)
         else:
             speak(buf)
@@ -495,7 +492,7 @@ def contains_wake_word(text: str) -> bool:
     # Coincidencia fuzzy: comparar cada palabra del texto con "coramo"
     words = normalized.split()
     for word in words:
-        if len(word) >= 5 and difflib.SequenceMatcher(None, word, "coramo").ratio() >= 0.80:
+        if len(word) >= 5 and difflib.SequenceMatcher(None, word, "coramo").ratio() >= 0.72:
             return True
     return False
 
@@ -524,7 +521,22 @@ def extract_question(text: str) -> str:
     return ""
 
 
+_EMOJI_RE = re.compile(
+    "["
+    "\U0001F600-\U0001F64F"
+    "\U0001F300-\U0001F5FF"
+    "\U0001F680-\U0001F6FF"
+    "\U0001F1E0-\U0001F1FF"
+    "\U00002600-\U000027BF"
+    "\U0001F900-\U0001F9FF"
+    "\U0001FA00-\U0001FA7F"
+    "\U0001FA80-\U0001FAFF"
+    "]+",
+    flags=re.UNICODE,
+)
+
 def speak(text: str) -> None:
+    text = _EMOJI_RE.sub("", text).strip()
     if not text:
         return
     log(f"  [speak] '{text[:80]}'")
