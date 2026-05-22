@@ -20,7 +20,7 @@ RUN cd /whisper.cpp && \
     cmake --build build -j8 --target whisper-cli
 
 COPY docker/brain/requirements.txt /app/requirements.txt
-RUN python3 -m pip install --no-cache-dir -r /app/requirements.txt
+RUN python3 -m pip install --no-cache-dir --break-system-packages -r /app/requirements.txt
 
 # Piper TTS binario precompilado para x86_64 Linux
 RUN curl -fsSL "https://github.com/rhasspy/piper/releases/download/2023.11.14-2/piper_linux_x86_64.tar.gz" \
