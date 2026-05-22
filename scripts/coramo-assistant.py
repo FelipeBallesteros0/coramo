@@ -53,7 +53,7 @@ PIPER_MODEL         = os.environ.get("PIPER_MODEL",
 MANAGED_LLM         = os.environ.get("MANAGED_LLM", "true").lower() == "true"
 
 # -- Audio device ------------------------------------------------------------
-AUDIO_DEVICE    = "default"
+AUDIO_DEVICE    = os.environ.get("ALSA_DEVICE", "plughw:0,0")
 
 # -- GPU assignment ----------------------------------------------------------
 # En Docker (Opcion A): whisper corre en CPU puro, LLM en contenedor separado con ambas GPUs.
@@ -544,7 +544,7 @@ def speak(text: str) -> None:
             log(f"  [piper error] rc={result.returncode} stderr={result.stderr.decode()[:200]}")
             return
         log("  [speak] reproduciendo audio...")
-        subprocess.run(["aplay", "-q", wav_file], check=True)
+        subprocess.run(["aplay", "-q", "-D", AUDIO_DEVICE, wav_file], check=True)
         log("  [speak] listo.")
     finally:
         for f in (wav_file, txt_file):

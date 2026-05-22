@@ -66,4 +66,4 @@ services:
       - OWW_MODEL=/models/coramo.onnx
       - MANAGED_LLM=false
       - CORAMO_LOG=/tmp/coramo-debug.log
-      - ALSA_CARD=0
+      - ALSA_DEVICE=plughw:0,0
