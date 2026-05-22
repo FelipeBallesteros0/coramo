@@ -23,10 +23,9 @@ RUN cd /llama.cpp && \
 EXPOSE 8080
 
 ENTRYPOINT ["/llama.cpp/build/bin/llama-server"]
-CMD ["--model", "/models/Qwen3-14B-Q5_K_M.gguf", \
+CMD ["--model", "/models/Qwen3-8B-Q5_K_M.gguf", \
      "--n-gpu-layers", "999", \
-     "--tensor-split", "1,1", \
-     "--ctx-size", "1024", \
+     "--ctx-size", "2048", \
      "--kv-cache-type", "q8_0", \
      "--parallel", "1", \
      "--host", "0.0.0.0", \
