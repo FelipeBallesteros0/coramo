@@ -2,9 +2,8 @@ services:
   coramo-llm:
     image: coramo-llm
     network_mode: host
-    restart: unless-stopped
+    restart: "no"
     devices:
-      - /dev/dri/renderD128
       - /dev/dri/renderD129
     group_add:
       - "44"
@@ -19,7 +18,7 @@ services:
       - "--n-gpu-layers"
       - "999"
       - "--ctx-size"
-      - "2048"
+      - "1024"
       - "--cache-type-k"
       - "q8_0"
       - "--cache-type-v"
@@ -44,21 +43,27 @@ services:
       context: ..
       dockerfile: docker/brain/Dockerfile
     network_mode: host
-    restart: unless-stopped
+    restart: "no"
     depends_on:
       coramo-llm:
         condition: service_healthy
     devices:
       - /dev/snd
+      - /dev/dri/renderD128
     group_add:
       - audio
       - dialout
+      - "44"
+      - "992"
     volumes:
       - /home/coramo/coramo/models:/models:ro
       - /home/coramo/piper-voices:/voices:ro
     environment:
       - WHISPER_BIN=/whisper.cpp/build/bin/whisper-cli
-      - WHISPER_MODEL=/models/ggml-tiny.bin
+      - WHISPER_SERVER_BIN=/whisper.cpp/build/bin/whisper-server
+      - WHISPER_SERVER_URL=http://127.0.0.1:8081
+      - WHISPER_MODEL=/models/ggml-small.bin
+      - VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.json
       - LLAMA_HOST=127.0.0.1
       - LLAMA_PORT=8080
       - PIPER_BIN=/usr/local/piper/piper

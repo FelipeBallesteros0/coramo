@@ -41,6 +41,7 @@ WHISPER_BIN         = os.environ.get("WHISPER_BIN",
                           os.path.expanduser("~/whisper.cpp/build/bin/whisper-cli"))
 WHISPER_MODEL_QUERY = os.environ.get("WHISPER_MODEL",
                           os.path.expanduser("~/whisper.cpp/models/ggml-small.bin"))
+WHISPER_SERVER_URL  = os.environ.get("WHISPER_SERVER_URL", "")  # vacio = usar subprocess
 LLAMA_SERVER        = os.environ.get("LLAMA_SERVER",
                           os.path.expanduser("~/llama.cpp/build/bin/llama-server"))
 LLAMA_MODEL         = os.environ.get("LLAMA_MODEL",
@@ -472,19 +473,51 @@ def record_wav(filename: str, seconds: int) -> None:
     ], check=True)
 
 
+_BOUNDARY = b"----WhisperBoundary7a3f9"
+_MULTIPART_CT = f"multipart/form-data; boundary={_BOUNDARY.decode()}"
+
+def _build_multipart(audio_bytes: bytes, filename: str, language: str) -> bytes:
+    def field(name: str, value: str) -> bytes:
+        return (
+            b"--" + _BOUNDARY + b"\r\n"
+            b'Content-Disposition: form-data; name="' + name.encode() + b'"\r\n\r\n'
+            + value.encode() + b"\r\n"
+        )
+    file_part = (
+        b"--" + _BOUNDARY + b"\r\n"
+        b'Content-Disposition: form-data; name="file"; filename="' + filename.encode() + b'"\r\n'
+        b"Content-Type: audio/wav\r\n\r\n"
+        + audio_bytes + b"\r\n"
+    )
+    return field("language", language) + field("response_format", "json") + file_part + b"--" + _BOUNDARY + b"--\r\n"
+
+
 def transcribe(audio_file: str, model: str = None) -> str:
+    if WHISPER_SERVER_URL:
+        # Modelo permanece en VRAM — sin costo de carga por llamada
+        try:
+            with open(audio_file, "rb") as f:
+                resp = urllib.request.urlopen(
+                    urllib.request.Request(
+                        f"{WHISPER_SERVER_URL}/inference",
+                        data=_build_multipart(f.read(), "audio.wav", "es"),
+                        headers={"Content-Type": _MULTIPART_CT},
+                    ),
+                    timeout=60,
+                )
+            data = json.loads(resp.read())
+            return data.get("text", "").strip()
+        except Exception as e:
+            log(f"  [whisper-server error] {e} — fallback a subprocess")
+
+    # Fallback: subprocess (carga el modelo en cada llamada)
     if model is None:
         model = WHISPER_MODEL_QUERY
     env = {**os.environ, **WHISPER_GPU_ENV}
-    cmd = [
-        WHISPER_BIN,
-        "-m", model,
-        "-f", audio_file,
-        "-l", "es",
-        "--no-prints",
-        "-nt",
-    ]
-    result = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    result = subprocess.run(
+        [WHISPER_BIN, "-m", model, "-f", audio_file, "-l", "es", "--no-prints", "-nt"],
+        capture_output=True, text=True, env=env,
+    )
     if result.returncode != 0:
         log(f"  [whisper error] rc={result.returncode} stderr={result.stderr[:200]}")
     return result.stdout.strip()
