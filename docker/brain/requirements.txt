@@ -1,9 +1,7 @@
 silero-vad==5.1.2
-openwakeword==0.6.0
 numpy==1.26.4
 requests==2.32.3
 pyserial==3.5
-piper-tts==1.2.0
 soundfile==0.12.1
 scipy==1.13.1
 torch==2.3.1
