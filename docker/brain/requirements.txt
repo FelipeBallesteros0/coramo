@@ -1,7 +1,9 @@
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.3.1+cpu
+torchaudio==2.3.1+cpu
 silero-vad==5.1.2
 numpy==1.26.4
 requests==2.32.3
 pyserial==3.5
 soundfile==0.12.1
 scipy==1.13.1
-torch==2.3.1

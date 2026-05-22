@@ -26,7 +26,8 @@ ENTRYPOINT ["/llama.cpp/build/bin/llama-server"]
 CMD ["--model", "/models/Qwen3-8B-Q5_K_M.gguf", \
      "--n-gpu-layers", "999", \
      "--ctx-size", "2048", \
-     "--kv-cache-type", "q8_0", \
+     "--cache-type-k", "q8_0", \
+     "--cache-type-v", "q8_0", \
      "--parallel", "1", \
      "--host", "0.0.0.0", \
      "--port", "8080", \
