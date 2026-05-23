@@ -14,7 +14,7 @@ services:
       - VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/radeon_icd.json
     command:
       - "--model"
-      - "/models/Qwen3-8B-Q5_K_M.gguf"
+      - "/models/Qwen3-4B-Q5_K_M.gguf"
       - "--n-gpu-layers"
       - "999"
       - "--ctx-size"
