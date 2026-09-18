@@ -14,7 +14,8 @@ actualizar primero este archivo.
 ## 1. Propósito
 
 CORAMO (**CO**laborativo **R**eprogramable **A**utónomo **MO**dular) es un robot
-humanoide modular de tamaño real controlado por voz con IA completamente local.
+humanoide modular de tamaño real controlado por voz, con IA local o en la nube
+según lo que resulte más rápido.
 
 **Propósito de v2:** rehacer el proyecto desde cero con el conocimiento adquirido
 en 2026, sin arrastrar los errores de v1, y ordenado por lo que evalúa un trabajo
@@ -113,7 +114,7 @@ por visión con agarre de objetos, control de impedancia.
 | Decisión | Elección | Razón |
 |---|---|---|
 | Columna vertebral | **ROS 2 Jazzy** | Felipe lo domina (4WD); Foxglove, `/joint_states`, TF y MoveIt disponibles; una toolchain para los dos robots de Nabla; reconocible por una comisión. |
-| IA | **100 % local** | Identidad del proyecto y diferenciador de la tesis. |
+| IA | **Local o nube, por latencia medida** | Decisión de Felipe (2026-09-18): lo que importa es la velocidad. Backends intercambiables (sección 5.6); los locales quedan como respaldo; la seguridad nunca depende de la red. |
 | GPU de inferencia | **RTX 4070 SUPER** para todo lo crítico | Una sola toolchain (CUDA). |
 | RX 580 | **Pantalla y reserva** | Evita duplicar toolchains (Vulkan/ROCm). |
 | Firmware del Pico | **C/C++ con el SDK oficial** | Lazo de control determinista de varios ejes; MicroPython no lo da. |
@@ -250,7 +251,8 @@ instrumentación extra.
 | **Total** | **≈ 9 GB de 12** | |
 
 Si en la tarea cero el total supera 11 GB, se baja el LLM a Q4_K_M antes de
-tocar cualquier otra cosa.
+tocar cualquier otra cosa. Los modelos locales se cargan aunque el perfil use
+nube, porque son el respaldo (sección 5.6).
 
 ### 5.5 Configuración
 
@@ -262,6 +264,33 @@ Un YAML por perfil en `coramo_bringup/params/`:
   tests sin el robot ni el servidor encendidos.
 - `head.yaml`: la RPi5.
 
+### 5.6 Backends de IA intercambiables
+
+Decisión de Felipe (2026-09-18): **lo que importa es la velocidad, no que todo
+sea local.** Cada etapa pesada (STT, LLM, TTS) es un backend intercambiable
+detrás de una interfaz única en `core/`, y el YAML del perfil elige cuál se usa.
+La elección se hace con benchmark en la tarea cero, no por preferencia.
+
+| Etapa | Local (4070) | Nube (candidatos) | Regla de elección |
+|---|---|---|---|
+| STT | faster-whisper large-v3-turbo, 0,12 s medido en el traductor | Transcripción de OpenAI (ya usada en el repo InMoov y en el bot de WhatsApp) o un servicio de streaming | Menor latencia fin de habla → texto con WER ≤ 10 % |
+| LLM | Qwen3-8B Q5 en llama-server | Claude Haiku 4.5 (`claude-haiku-4-5`, US$ 1 / 5 por millón de tokens de entrada / salida) o Claude Sonnet 5 (`claude-sonnet-5`, US$ 2 / 10); OpenAI o DeepSeek como alternativas ya usadas | Mejor acierto de tool con latencia ≤ 0,5 s. En la nube: `tool_choice` forzado a una tool, sin thinking, system prompt con cache |
+| TTS | Kokoro, 0,19 s medido | TTS de OpenAI en streaming, ElevenLabs o Fish Audio (ya probado) | Menor tiempo al primer audio con voz española aceptable |
+| Visión | Detector local, siempre | ninguno | 15 FPS continuos no se mandan a la nube |
+
+Reglas fijas, independientes del backend:
+
+- Los modelos locales quedan cargados aunque el perfil use nube: son el
+  **respaldo automático** si la red falla o una petición supera el tiempo
+  límite (2 s). Sin internet el robot sigue funcionando, más lento.
+- La nube recibe solo el segmento de audio del turno y el texto; nunca audio
+  continuo ni video.
+- La cadena de seguridad (watchdog, botón, límites en el Pico) no depende de
+  la red. El "detente" por voz hereda la latencia del STT en uso; el botón
+  físico es la parada primaria.
+- Costo por orden con el system prompt en cache: menos de un centavo de dólar
+  con Haiku 4.5 o Sonnet 5. Se mide y se registra en `docs/mediciones/`.
+
 ---
 
 ## 6. Subproyecto A — Cerebro
@@ -272,18 +301,20 @@ Un YAML por perfil en `coramo_bringup/params/`:
    (−45 dBFS RMS, del traductor) para no alimentar ruido de sala.
 2. `vad`: Silero VAD en CPU. Fin de turno tras 600 ms de silencio (ajustable),
    tope de 15 s. Publica el segmento completo con marcas de inicio y fin.
-3. `stt`: faster-whisper large-v3-turbo, `language=es`, `beam_size=1`,
-   modelo residente. Publica texto + confianza.
+3. `stt`: backend según perfil (local faster-whisper large-v3-turbo con
+   `language=es` y `beam_size=1`, o nube). El modelo local queda residente.
+   Publica texto + confianza.
 4. Wake word por texto con coincidencia difusa ("coramo", "hola coramo"...),
    **excepto en modo cara a cara**: si `/vision/people` reporta una persona a
    menos de ~2 m mirando al robot, no se exige la palabra.
-5. `agent`: llama-server (llama.cpp CUDA) con Qwen3-8B, `--jinja` para tools,
-   `tool_choice=required`, temperatura 0, historial corto (últimos 6 turnos),
-   system prompt con identidad y reglas. KV cache del system prompt
-   precalentado al arrancar.
+5. `agent`: backend según perfil (llama-server con Qwen3-8B y `--jinja`, o
+   Claude Haiku 4.5 / Sonnet 5 por API). Siempre una tool obligatoria por
+   turno, temperatura 0, historial corto (últimos 6 turnos), system prompt con
+   identidad y reglas, y cache del system prompt (KV local o prompt caching
+   en la nube).
 6. Tool elegida → `safety` → `body_bridge` (acción) y/o `tts`.
-7. `tts`: Kokoro en GPU, voz española, streaming por oración. Piper en CPU como
-   respaldo si Kokoro falla al cargar.
+7. `tts`: backend según perfil (Kokoro local o TTS en nube), streaming por
+   oración. Piper en CPU como último respaldo.
 
 ### 6.2 Tools expuestas al LLM
 
@@ -306,16 +337,21 @@ detecta también **antes** del LLM, por texto, para no depender de la inferencia
 que el VAD necesita para cerrar el turno **cuenta** dentro de la latencia,
 porque el usuario lo percibe.
 
+Objetivos por etapa, independientes del backend elegido:
+
 | Etapa | Objetivo |
 |---|---|
 | Fin de turno (silencio VAD) | 0,6 s (es parte de la percepción del usuario) |
-| STT | 0,15 s |
-| LLM (≤ 40 tokens de tool call) | 0,4 s |
+| STT | ≤ 0,3 s |
+| LLM (≤ 40 tokens de tool call) | ≤ 0,5 s |
 | Seguridad + serial | 0,02 s |
-| **Acción física** | **< 1,2 s desde fin de habla; aceptación ≤ 1,5 s** |
+| **Acción física** | **≤ 1,5 s desde fin de habla (p95)** |
 | Primer audio TTS | < 1,8 s |
 
-Se mide con las marcas de `/coramo/state`, no se estima.
+Se mide con las marcas de `/coramo/state`, no se estima. Cada backend (local y
+nube) se mide en la tarea cero con 30 peticiones (p50 y p95) sobre la red de
+la casa; el ganador por etapa va a `xeon.yaml` y el resultado queda en
+`docs/mediciones/`.
 
 ### 6.4 Pruebas
 
@@ -480,7 +516,7 @@ corriente resulta insuficiente, se reabre la decisión con datos.
 
 | Hito | Contenido | Criterio de aceptación |
 |---|---|---|
-| **0 — Servidor listo** | Xeon encendido y verificado: Ubuntu 24.04, driver NVIDIA + CUDA 12, amdgpu como pantalla, ROS 2 Jazzy, Discovery Server, fuente. RPi5 reinstalada como cabeza. Modelos descargados. | Tabla de latencia de referencia por modelo (STT, LLM, TTS) y FPS del detector, medidos. Cámaras visibles desde el Xeon. |
+| **0 — Servidor listo** | Xeon encendido y verificado: Ubuntu 24.04, driver NVIDIA + CUDA 12, amdgpu como pantalla, ROS 2 Jazzy, Discovery Server, fuente. RPi5 reinstalada como cabeza. Modelos locales descargados y claves de API configuradas. Benchmark local vs nube por etapa. | Tabla de latencia por backend (STT, LLM, TTS, p50 y p95 de 30 peticiones) y FPS del detector, medidos. Tabla de decisión de backends. Cámaras visibles desde el Xeon. |
 | **A — Cerebro** | Paquetes `coramo_brain`, `coramo_msgs`, `coramo_bringup`; `body_bridge` simulado. | "coramo, cierra la mano" → `/body/command_safe` en ≤ 1,5 s desde fin de habla, medido. Conversación básica. Tests verdes sin robot. |
 | **B — Cuerpo (mano primero)** | Protocolo v2, firmware Pico C++, `body_bridge` real, `safety`. | Mano y cabeza comandadas desde ROS con telemetría en Foxglove. Watchdog y parada verificados. |
 | **D básico** | Nodo cabeza, detector, `look_at`, saludo. | El robot detecta a una persona, la mira, la saluda y ejecuta una orden de mano. |
@@ -511,6 +547,8 @@ números. Eso es directamente material de la tesis.
 | Tiempo de reacción del watchdog | desconexión USB instrumentada | ≤ 250 ms |
 | Detección de personas | FPS y latencia; precisión sobre 100 cuadros anotados | 15 FPS, < 100 ms |
 | Prueba con usuarios | 5–10 personas, 3 tareas cada una, cuestionario | reportada, sin meta numérica |
+| Costo por orden (backends en nube) | tokens y precio de la API sobre 30 órdenes | reportado |
+| Funcionamiento sin internet | desconectar la red, 10 órdenes con respaldo local | 100 % ejecutadas; latencia reportada |
 
 ---
 
@@ -524,6 +562,9 @@ números. Eso es directamente material de la tesis.
   Se corrige en todo material que diga "Reconfigurable".
 - coramo.cl, el paper y la tesis se derivan de `docs/`. El sitio solo se
   actualiza cuando hay un hito medido; no se anuncian predicciones.
+- coramo.cl hoy dice "Sin internet. Sin nube.". Cuando v2 use backends en
+  nube, el sitio y el paper se corrigen: el mensaje pasa a ser "rápido, con
+  respaldo local sin internet".
 - Git: rama `v1-rpi5` + tag `v1.0` conservan v1 íntegro. `main` reinicia con
   historia limpia. Los `docs/01..06` de v1 se mueven a `docs/legado/` para
   citarlos como trabajo previo en la tesis.
@@ -546,6 +587,10 @@ números. Eso es directamente material de la tesis.
 | Corriente de bloqueo de los motores vs BTS7960 y fuente | Se conoce en el inventario. Umbrales de `overcurrent` salen de ahí. |
 | Estéreo vs RGB-D para distancia | Se decide en D completo con datos de D básico (si la altura de la caja basta para "< 2 m", no hace falta estéreo). |
 | Hold por PID ante pérdida de latido consume corriente indefinidamente | Tope de tiempo en `hold` (p. ej. 60 s) tras el cual el brazo baja a una pose de reposo controlada y luego libera. Se define en B. |
+| Dependencia de red en demos y ferias | Respaldo local automático; hotspot del teléfono como segunda red; la demo de la tesis se ensaya en ambos modos. |
+| Costo acumulado de API | Cache del system prompt; costo por orden medido en la tarea cero; tope de gasto mensual en la cuenta. |
+| Privacidad del audio en la nube | Solo se envía el segmento del turno, nunca audio continuo ni video; se declara en la tesis. |
+| Modelos que no admiten `tool_choice` forzado (familia Claude Fable) | Usar Sonnet 5 o Haiku 4.5, o `auto` con instrucción explícita y validación del JSON antes de ejecutar. |
 
 ---
 
