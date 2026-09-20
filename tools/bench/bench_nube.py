@@ -45,9 +45,16 @@ for modelo in os.environ.get("OPENAI_CHAT_MODELS", "gpt-5.5").split(","):
         llm_openai_compatible("OpenAI", oai, modelo.strip(), {"reasoning_effort": "minimal"})
     except Exception as ex:
         print(f"{modelo}: sin reasoning_effort ({str(ex)[:80]}); reintento sin el parámetro")
-        llm_openai_compatible("OpenAI", oai, modelo.strip(), {})
+        try:
+            llm_openai_compatible("OpenAI", oai, modelo.strip(), {})
+        except Exception as ex2:
+            print(f"OpenAI {modelo}: ERROR {str(ex2)[:100]}")
 if os.environ.get("DEEPSEEK_API_KEY"):
     ds = OpenAI(api_key=os.environ["DEEPSEEK_API_KEY"], base_url="https://api.deepseek.com")
-    llm_openai_compatible("DeepSeek", ds, os.environ.get("DEEPSEEK_CHAT_MODEL", "deepseek-chat"), {})
+    for modelo in os.environ.get("DEEPSEEK_CHAT_MODELS", "deepseek-flash").split(","):
+        try:
+            llm_openai_compatible("DeepSeek", ds, modelo.strip(), {})
+        except Exception as ex:
+            print(f"DeepSeek {modelo}: ERROR {str(ex)[:100]}")
 else:
     print("DeepSeek: sin DEEPSEEK_API_KEY, no se mide")
