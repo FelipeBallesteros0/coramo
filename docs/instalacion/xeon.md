@@ -47,3 +47,10 @@ Cada sección de abajo la agrega la tarea del plan que la ejecuta.
 - ~/venvs/vision: ultralytics; YOLO11n a 640x480: 46 FPS, 21,8 ms/cuadro.
 - ~/datos/ordenes/NN.wav: 30 órdenes sintéticas (Kokoro, 16 kHz) generadas con tools/bench/gen_ordenes.py.
 - Trampa: pkill -f llama-server por SSH mata al propio shell; usar el patrón build/bin/[l]lama-server.
+
+## ROS 2 (tarea 10, 2026-09-20)
+- Lyrical Luth desde ros2-apt-source 1.3.0: ros-lyrical-ros-base 0.13.0, ros-dev-tools, rmw-fastrtps-cpp, foxglove-bridge, demo-nodes-cpp (204 paquetes).
+- /etc/profile.d/coramo-ros.sh (cargado desde ~/.bashrc): setup.bash, RMW_IMPLEMENTATION=rmw_fastrtps_cpp, ROS_DISCOVERY_SERVER=192.168.1.103:11811, ROS_DOMAIN_ID=7. ros2 doctor: distribution lyrical, middleware rmw_fastrtps_cpp.
+- Servicio fastdds-discovery.service (fastdds discovery -i 0 -l 0.0.0.0 -p 11811, usuario coramo, Restart=always). talker/listener por el Discovery Server: OK (6 mensajes en 8 s).
+- foxglove_bridge en el puerto 8765 (lanzado a mano; en el subproyecto A pasa a launch/servicio). Conexión desde Windows: ws://192.168.1.103:8765.
+- Mientras el Xeon siga por WiFi, reservar 192.168.1.103 en el router: la cabeza y Foxglove apuntan a esa IP.
