@@ -54,3 +54,18 @@ Cada sección de abajo la agrega la tarea del plan que la ejecuta.
 - Servicio fastdds-discovery.service (fastdds discovery -i 0 -l 0.0.0.0 -p 11811, usuario coramo, Restart=always). talker/listener por el Discovery Server: OK (6 mensajes en 8 s).
 - foxglove_bridge en el puerto 8765 (lanzado a mano; en el subproyecto A pasa a launch/servicio). Conexión desde Windows: ws://192.168.1.103:8765.
 - Mientras el Xeon siga por WiFi, reservar 192.168.1.103 en el router: la cabeza y Foxglove apuntan a esa IP.
+
+## Red integrada: el chip está muerto (2026-09-20)
+
+La P9X79 LE trae un **Realtek LAN** integrado y en la BIOS figura como `Realtek LAN Controller: Enabled` (Advanced → Onboard Devices Configuration), pero Linux no lo ve: `lspci` no lista ninguna controladora de red y el driver `r8169` no encuentra hardware.
+
+La causa está en el bus PCIe. El chip cuelga del **puerto raíz 1 del chipset (`00:1c.0`)**, y ese puerto reporta:
+
+```
+LnkSta: Speed 2.5GT/s, Width x0
+```
+
+`Width x0` significa que **el enlace nunca entrena**: no hay nada al otro lado. El bus 05 está vacío, mientras que los puertos 3, 4 y 5 sí tienen sus dispositivos (dos ASM1042 USB 3.0 y el ASM1061 SATA). No es un ajuste de BIOS ni un driver: el chip de red no responde eléctricamente.
+
+**Conclusión:** el Xeon no tiene ni tendrá puerto Ethernet propio. Para red cableada hace falta un adaptador USB, y el que había (Realtek RTL8153, `0bda:8153`) **también está averiado**: transmite y recibe cero paquetes pese a negociar 1 Gb/s, y el bus USB registra desconexiones (`status -108`). Mientras no haya un adaptador sano, el Xeon va por WiFi, que para esta carga sobra.
+
