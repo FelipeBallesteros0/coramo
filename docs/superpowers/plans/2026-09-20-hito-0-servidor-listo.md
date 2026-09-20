@@ -23,6 +23,7 @@
 - Claves de API solo en `~/.config/coramo/env` del Xeon (modo 600). Nunca en el repo.
 - Cada tarea termina con un commit en la rama `v2-planificacion` del clon `~/coramo` **del Xeon**; el push lo decide Felipe.
 - Cambios de red se hacen con el WiFi activo como respaldo, para no perder el SSH.
+- **Nunca** combinar `cmd | sudo -S ... tee ARCHIVO <<< coramo123`: el here-string reemplaza la tubería y el archivo termina con la contraseña en vez del contenido (pasó el 2026-09-20: NetworkManager no arrancó tras reiniciar). Patrón correcto: escribir el contenido en `/tmp/coramo.tmp` como usuario y luego `echo coramo123 | sudo -S -p '' install -m 644 /tmp/coramo.tmp DESTINO`.
 
 ---
 
@@ -152,14 +153,14 @@ Expected: `'nothing'` y `gdm ok` (si sale el aviso alternativo, no importa: el p
 - [ ] **Step 3: Regla udev para que los adaptadores USB de red nunca entren en autosuspend (heredada de v1, `docs/legado/01-red.md`)**
 
 ```bash
-ssh coramo "printf 'ACTION==\"add\", SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"0e8d\", ATTRS{idProduct}==\"7961\", ATTR{power/control}=\"on\"\nACTION==\"add\", SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"0bda\", ATTRS{idProduct}==\"8153\", ATTR{power/control}=\"on\"\n' | sudo -S -p '' tee /etc/udev/rules.d/70-usb-power.rules >/dev/null <<< coramo123; echo coramo123 | sudo -S -p '' udevadm control --reload; echo coramo123 | sudo -S -p '' udevadm trigger --subsystem-match=usb; sleep 2; for d in /sys/bus/usb/devices/*; do v=\$(cat \$d/idVendor 2>/dev/null); p=\$(cat \$d/idProduct 2>/dev/null); case \"\$v:\$p\" in 0e8d:7961|0bda:8153) echo \"\$v:\$p control=\$(cat \$d/power/control)\";; esac; done"
+ssh coramo "printf 'ACTION==\"add\", SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"0e8d\", ATTRS{idProduct}==\"7961\", ATTR{power/control}=\"on\"\nACTION==\"add\", SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"0bda\", ATTRS{idProduct}==\"8153\", ATTR{power/control}=\"on\"\n' > /tmp/coramo.tmp && echo coramo123 | sudo -S -p '' install -m 644 /tmp/coramo.tmp /etc/udev/rules.d/70-usb-power.rules && rm -f /tmp/coramo.tmp; echo coramo123 | sudo -S -p '' udevadm control --reload; echo coramo123 | sudo -S -p '' udevadm trigger --subsystem-match=usb; sleep 2; for d in /sys/bus/usb/devices/*; do v=\$(cat \$d/idVendor 2>/dev/null); p=\$(cat \$d/idProduct 2>/dev/null); case \"\$v:\$p\" in 0e8d:7961|0bda:8153) echo \"\$v:\$p control=\$(cat \$d/power/control)\";; esac; done"
 ```
 Expected: `0e8d:7961 control=on` y `0bda:8153 control=on` (hoy ya están en `on`; la regla lo fija tras cada reinicio o reconexión).
 
 - [ ] **Step 4: WiFi sin ahorro de energía (NetworkManager)**
 
 ```bash
-ssh coramo "printf '[connection]\nwifi.powersave = 2\n' | sudo -S -p '' tee /etc/NetworkManager/conf.d/wifi-powersave-off.conf >/dev/null <<< coramo123; echo coramo123 | sudo -S -p '' systemctl restart NetworkManager; sleep 6; iw dev wlx90de80052ea8 get power_save"
+ssh coramo "printf '[connection]\nwifi.powersave = 2\n' > /tmp/coramo.tmp && echo coramo123 | sudo -S -p '' install -m 644 /tmp/coramo.tmp /etc/NetworkManager/conf.d/wifi-powersave-off.conf && rm -f /tmp/coramo.tmp; echo coramo123 | sudo -S -p '' systemctl restart NetworkManager; sleep 6; iw dev wlx90de80052ea8 get power_save"
 ping -c 5 192.168.1.103 | tail -1
 ```
 Expected: `Power save: off` y `rtt min/avg/max` con avg `< 30 ms` (hoy: 121 ms). El SSH se corta unos segundos durante el reinicio de NetworkManager; reintentar si el primer comando devuelve error de conexión.
@@ -828,14 +829,14 @@ Expected: `lyrical`.
 - [ ] **Step 2: Entorno de ROS para todas las sesiones**
 
 ```bash
-ssh coramo "printf 'source /opt/ros/lyrical/setup.bash\nexport RMW_IMPLEMENTATION=rmw_fastrtps_cpp\nexport ROS_DISCOVERY_SERVER=192.168.1.90:11811\nexport ROS_DOMAIN_ID=7\n' | sudo -S -p '' tee /etc/profile.d/coramo-ros.sh >/dev/null <<< coramo123; grep -q coramo-ros ~/.bashrc || echo 'source /etc/profile.d/coramo-ros.sh' >> ~/.bashrc; bash -lc 'ros2 doctor --report 2>/dev/null | grep -iE \"middleware|distribution\"'"
+ssh coramo "printf 'source /opt/ros/lyrical/setup.bash\nexport RMW_IMPLEMENTATION=rmw_fastrtps_cpp\nexport ROS_DISCOVERY_SERVER=192.168.1.90:11811\nexport ROS_DOMAIN_ID=7\n' > /tmp/coramo.tmp && echo coramo123 | sudo -S -p '' install -m 644 /tmp/coramo.tmp /etc/profile.d/coramo-ros.sh && rm -f /tmp/coramo.tmp; grep -q coramo-ros ~/.bashrc || echo 'source /etc/profile.d/coramo-ros.sh' >> ~/.bashrc; bash -lc 'ros2 doctor --report 2>/dev/null | grep -iE \"middleware|distribution\"'"
 ```
 Expected: `distribution name : lyrical` y `middleware name : rmw_fastrtps_cpp`.
 
 - [ ] **Step 3: Discovery Server como servicio**
 
 ```bash
-ssh coramo "printf '[Unit]\nDescription=Fast DDS Discovery Server (CORAMO)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nExecStart=/bin/bash -lc \"source /opt/ros/lyrical/setup.bash && exec fastdds discovery -i 0 -l 192.168.1.90 -p 11811\"\nRestart=always\nRestartSec=3\nUser=coramo\n\n[Install]\nWantedBy=multi-user.target\n' | sudo -S -p '' tee /etc/systemd/system/fastdds-discovery.service >/dev/null <<< coramo123; echo coramo123 | sudo -S -p '' systemctl daemon-reload; echo coramo123 | sudo -S -p '' systemctl enable --now fastdds-discovery; sleep 2; systemctl is-active fastdds-discovery; ss -lunp | grep -c 11811"
+ssh coramo "printf '[Unit]\nDescription=Fast DDS Discovery Server (CORAMO)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nExecStart=/bin/bash -lc \"source /opt/ros/lyrical/setup.bash && exec fastdds discovery -i 0 -l 192.168.1.90 -p 11811\"\nRestart=always\nRestartSec=3\nUser=coramo\n\n[Install]\nWantedBy=multi-user.target\n' > /tmp/coramo.tmp && echo coramo123 | sudo -S -p '' install -m 644 /tmp/coramo.tmp /etc/systemd/system/fastdds-discovery.service && rm -f /tmp/coramo.tmp; echo coramo123 | sudo -S -p '' systemctl daemon-reload; echo coramo123 | sudo -S -p '' systemctl enable --now fastdds-discovery; sleep 2; systemctl is-active fastdds-discovery; ss -lunp | grep -c 11811"
 ```
 Expected: `active` y `1`.
 
@@ -935,7 +936,7 @@ cd ~/coramo && git add head && git -c user.name="Felipe Ballesteros" -c user.ema
 
 ```bash
 scp -r ~/coramo/head coramo@192.168.1.91:~/coramo/ 2>/dev/null || (ssh coramo@192.168.1.91 'mkdir -p ~/coramo' && scp -r ~/coramo/head coramo@192.168.1.91:~/coramo/)
-ssh coramo@192.168.1.91 "echo coramo123 | sudo -S -p '' apt-get install -y -qq software-properties-common curl && echo coramo123 | sudo -S -p '' add-apt-repository -y universe >/dev/null && V=\$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F tag_name | awk -F'\"' '{print \$4}') && curl -sL -o /tmp/ros2-apt-source.deb \"https://github.com/ros-infrastructure/ros-apt-source/releases/download/\${V}/ros2-apt-source_\${V}.\$(. /etc/os-release && echo \$VERSION_CODENAME)_all.deb\" && echo coramo123 | sudo -S -p '' dpkg -i /tmp/ros2-apt-source.deb && echo coramo123 | sudo -S -p '' apt-get update -qq && echo coramo123 | sudo -S -p '' apt-get install -y -qq ros-lyrical-ros-base ros-lyrical-rmw-fastrtps-cpp ros-lyrical-camera-ros ros-lyrical-compressed-image-transport && printf 'server 192.168.1.90 iburst prefer\n' | sudo -S -p '' tee -a /etc/chrony/chrony.conf >/dev/null <<< coramo123 && echo coramo123 | sudo -S -p '' systemctl restart chrony && sleep 5 && chronyc tracking | grep -E 'Reference ID|System time'"
+ssh coramo@192.168.1.91 "echo coramo123 | sudo -S -p '' apt-get install -y -qq software-properties-common curl && echo coramo123 | sudo -S -p '' add-apt-repository -y universe >/dev/null && V=\$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F tag_name | awk -F'\"' '{print \$4}') && curl -sL -o /tmp/ros2-apt-source.deb \"https://github.com/ros-infrastructure/ros-apt-source/releases/download/\${V}/ros2-apt-source_\${V}.\$(. /etc/os-release && echo \$VERSION_CODENAME)_all.deb\" && echo coramo123 | sudo -S -p '' dpkg -i /tmp/ros2-apt-source.deb && echo coramo123 | sudo -S -p '' apt-get update -qq && echo coramo123 | sudo -S -p '' apt-get install -y -qq ros-lyrical-ros-base ros-lyrical-rmw-fastrtps-cpp ros-lyrical-camera-ros ros-lyrical-compressed-image-transport && printf 'server 192.168.1.90 iburst prefer\n' > /tmp/coramo.tmp && echo coramo123 | sudo -S -p '' sh -c 'cat /tmp/coramo.tmp >> /etc/chrony/chrony.conf' && rm -f /tmp/coramo.tmp && echo coramo123 | sudo -S -p '' systemctl restart chrony && sleep 5 && chronyc tracking | grep -E 'Reference ID|System time'"
 ```
 Expected: `Reference ID : C0A8015A (192.168.1.90)` y `System time : 0.00x seconds` (en el Xeon, `chrony` debe permitir clientes: `allow 192.168.1.0/24` en `/etc/chrony/chrony.conf` y reinicio; instalar `chrony` en el Xeon si falta).
 
