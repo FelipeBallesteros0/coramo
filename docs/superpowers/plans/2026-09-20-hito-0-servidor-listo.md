@@ -824,40 +824,40 @@ ssh coramo 'cd ~/coramo && git add tools && git -c user.name="Felipe Ballesteros
 **Interfaces:**
 - Produces: `ros2` funcional en Bash de login; Discovery Server en `192.168.1.90:11811`; `foxglove_bridge` en el puerto 8765; variable `ROS_DISCOVERY_SERVER` y `RMW_IMPLEMENTATION=rmw_fastrtps_cpp` para todos los nodos.
 
-- [ ] **Step 1: Repositorio de ROS 2 e instalación**
+- [x] **Step 1: Repositorio de ROS 2 e instalación**
 
 ```bash
 ssh coramo "echo coramo123 | sudo -S -p '' apt-get install -y -qq software-properties-common curl && echo coramo123 | sudo -S -p '' add-apt-repository -y universe >/dev/null && V=\$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F tag_name | awk -F'\"' '{print \$4}') && curl -sL -o /tmp/ros2-apt-source.deb \"https://github.com/ros-infrastructure/ros-apt-source/releases/download/\${V}/ros2-apt-source_\${V}.\$(. /etc/os-release && echo \$VERSION_CODENAME)_all.deb\" && echo coramo123 | sudo -S -p '' dpkg -i /tmp/ros2-apt-source.deb && echo coramo123 | sudo -S -p '' apt-get update -qq && echo coramo123 | sudo -S -p '' apt-get install -y -qq ros-lyrical-ros-base ros-dev-tools ros-lyrical-rmw-fastrtps-cpp ros-lyrical-foxglove-bridge ros-lyrical-demo-nodes-cpp && ls /opt/ros"
 ```
-Expected: `lyrical`.
+Expected: `lyrical`. Resultado 2026-09-20: ros-apt-source 1.3.0, 204 paquetes `ros-lyrical-*`, ros-base 0.13.0.
 
-- [ ] **Step 2: Entorno de ROS para todas las sesiones**
+- [x] **Step 2: Entorno de ROS para todas las sesiones**
 
 ```bash
 ssh coramo "printf 'source /opt/ros/lyrical/setup.bash\nexport RMW_IMPLEMENTATION=rmw_fastrtps_cpp\nexport ROS_DISCOVERY_SERVER=192.168.1.90:11811\nexport ROS_DOMAIN_ID=7\n' > /tmp/coramo.tmp && echo coramo123 | sudo -S -p '' install -m 644 /tmp/coramo.tmp /etc/profile.d/coramo-ros.sh && rm -f /tmp/coramo.tmp; grep -q coramo-ros ~/.bashrc || echo 'source /etc/profile.d/coramo-ros.sh' >> ~/.bashrc; bash -lc 'ros2 doctor --report 2>/dev/null | grep -iE \"middleware|distribution\"'"
 ```
-Expected: `distribution name : lyrical` y `middleware name : rmw_fastrtps_cpp`.
+Expected: `distribution name : lyrical` y `middleware name : rmw_fastrtps_cpp`. Resultado 2026-09-20: ambos confirmados; `ROS_DISCOVERY_SERVER=192.168.1.103:11811` mientras el Xeon siga por WiFi (reservar la IP en el router).
 
-- [ ] **Step 3: Discovery Server como servicio**
+- [x] **Step 3: Discovery Server como servicio**
 
 ```bash
 ssh coramo "printf '[Unit]\nDescription=Fast DDS Discovery Server (CORAMO)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nExecStart=/bin/bash -lc \"source /opt/ros/lyrical/setup.bash && exec fastdds discovery -i 0 -l 192.168.1.90 -p 11811\"\nRestart=always\nRestartSec=3\nUser=coramo\n\n[Install]\nWantedBy=multi-user.target\n' > /tmp/coramo.tmp && echo coramo123 | sudo -S -p '' install -m 644 /tmp/coramo.tmp /etc/systemd/system/fastdds-discovery.service && rm -f /tmp/coramo.tmp; echo coramo123 | sudo -S -p '' systemctl daemon-reload; echo coramo123 | sudo -S -p '' systemctl enable --now fastdds-discovery; sleep 2; systemctl is-active fastdds-discovery; ss -lunp | grep -c 11811"
 ```
-Expected: `active` y `1`.
+Expected: `active` y `1`. Resultado 2026-09-20: `active`, escucha en 0.0.0.0:11811 (todas las interfaces, para que sirva por WiFi y por cable).
 
-- [ ] **Step 4: Prueba talker/listener a través del Discovery Server**
+- [x] **Step 4: Prueba talker/listener a través del Discovery Server**
 
 ```bash
 ssh coramo "bash -lc '(timeout 8 ros2 run demo_nodes_cpp talker >/dev/null 2>&1 &); timeout 8 ros2 run demo_nodes_cpp listener 2>&1 | grep -c \"I heard\"'"
 ```
-Expected: un número `>= 3`.
+Expected: un número `>= 3`. Resultado 2026-09-20: `6`.
 
-- [ ] **Step 5: foxglove_bridge y conexión desde Windows**
+- [x] **Step 5: foxglove_bridge y conexión desde Windows**
 
 ```bash
 ssh coramo "bash -lc '(nohup ros2 run foxglove_bridge foxglove_bridge --ros-args -p port:=8765 > /tmp/foxglove.log 2>&1 &); sleep 3; ss -ltnp | grep -c 8765'"
 ```
-Expected: `1`. En Windows, abrir Foxglove Studio → Open connection → `ws://192.168.1.90:8765`; debe listar `/rosout` y `/parameter_events`.
+Expected: `1`. En Windows, abrir Foxglove Studio → Open connection → `ws://192.168.1.103:8765` (o la IP del Xeon); debe listar `/rosout` y `/parameter_events`. Resultado 2026-09-20: puente arriba anunciando `/rosout` y `/parameter_events`; puerto 8765 alcanzable desde WSL. Lanzado a mano; pasa a servicio/launch en el subproyecto A.
 
 - [ ] **Step 6: Documentar y commit**
 
