@@ -38,3 +38,12 @@ Cada sección de abajo la agrega la tarea del plan que la ejecuta.
 - Prueba gpu_load.py 120 s en la 4070: potencia clavada en el límite de 220 W, temperatura de 47 a 82 °C, reloj 2,72 a 2,67 GHz (leve throttling térmico al final), PCIe gen 3 x16 bajo carga, 74 TFLOPS fp16.
 - Errores de kernel (Xid, reset, PCIe): 0. Sin reinicios. La fuente aguanta la 4070 a tope con la RX 580 y el Xeon activos.
 - Nota: la temperatura llega a 82 °C en 2 min; para cargas largas conviene revisar el flujo de aire del gabinete.
+
+## Modelos y entornos (tareas 5 a 9, 2026-09-20)
+- ~/venvs/tts: kokoro + soundfile (Python 3.12). TTS Kokoro ef_dora en GPU: p50 0,13 s / p95 0,14 s al primer audio.
+- ~/venvs/stt: faster-whisper + nvidia-cublas-cu12 + nvidia-cudnn-cu12 + jiwer; CTranslate2 4.8.2. Whisper large-v3-turbo fp16: p50 0,16 s / p95 0,17 s, WER 8,7 % sobre las 30 órdenes sintéticas.
+- ~/llama.cpp compilado con CUDA 12.4 (-DGGML_CUDA=ON, 24 hilos). Modelo ~/modelos/Qwen3-8B-Q5_K_M.gguf (5,85 GB, Qwen/Qwen3-8B-GGUF). Lanzador tools/bench/llama-server.sh (puerto 8080, ctx 8192, KV q8_0, thinking off). 6,1 GiB de VRAM. Benchmark: p50 0,35 s / p95 0,68 s, 29/30 tools correctas.
+- ~/venvs/bench: requests, openai, anthropic, soundfile, numpy (clientes de benchmark).
+- ~/venvs/vision: ultralytics; YOLO11n a 640x480: 46 FPS, 21,8 ms/cuadro.
+- ~/datos/ordenes/NN.wav: 30 órdenes sintéticas (Kokoro, 16 kHz) generadas con tools/bench/gen_ordenes.py.
+- Trampa: pkill -f llama-server por SSH mata al propio shell; usar el patrón build/bin/[l]lama-server.
