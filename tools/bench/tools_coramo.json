@@ -1,0 +1,7 @@
+[
+ {"type":"function","function":{"name":"mano","description":"Mueve la mano robótica: un gesto completo o dedos individuales en grados.","parameters":{"type":"object","properties":{"gesto":{"type":"string","enum":["abre","cierra","paz","ok","rock","pulgar"]},"dedos":{"type":"object","additionalProperties":{"type":"number"}}},"additionalProperties":false}}},
+ {"type":"function","function":{"name":"brazo","description":"Mueve el brazo a una pose nombrada o a ángulos articulares en grados.","parameters":{"type":"object","properties":{"pose":{"type":"string","enum":["reposo","saludo","extendido","arriba","abajo"]},"articulaciones":{"type":"object","additionalProperties":{"type":"number"}}},"additionalProperties":false}}},
+ {"type":"function","function":{"name":"cabeza","description":"Orienta la cabeza del robot.","parameters":{"type":"object","properties":{"mirar":{"type":"string","enum":["persona","frente","izquierda","derecha","arriba","abajo"]}},"required":["mirar"],"additionalProperties":false}}},
+ {"type":"function","function":{"name":"responder","description":"Responde por voz cuando no hay acción física.","parameters":{"type":"object","properties":{"texto":{"type":"string"}},"required":["texto"],"additionalProperties":false}}},
+ {"type":"function","function":{"name":"detener","description":"Parada inmediata de todos los motores.","parameters":{"type":"object","properties":{},"additionalProperties":false}}}
+]

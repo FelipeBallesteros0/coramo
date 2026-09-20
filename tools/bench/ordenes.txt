@@ -1,0 +1,30 @@
+coramo cierra la mano|mano
+coramo abre la mano|mano
+coramo haz el gesto de paz|mano
+coramo haz ok con la mano|mano
+coramo levanta el pulgar|mano
+coramo mueve el índice a noventa grados|mano
+coramo cierra solo el meñique|mano
+coramo haz rock|mano
+coramo saluda|brazo
+coramo pon el brazo en reposo|brazo
+coramo extiende el brazo|brazo
+coramo levanta el brazo|brazo
+coramo baja el brazo despacio|brazo
+coramo mira a la izquierda|cabeza
+coramo mira a la derecha|cabeza
+coramo mira al frente|cabeza
+coramo mírame|cabeza
+coramo qué hora es|responder
+coramo cómo te llamas|responder
+coramo quién te construyó|responder
+coramo cuéntame un chiste corto|responder
+coramo qué puedes hacer|responder
+coramo cuánto es doce por tres|responder
+coramo buenos días|responder
+coramo detente|detener
+coramo para|detener
+coramo alto ahí|detener
+coramo no te muevas|detener
+hola coramo cierra el puño|mano
+oye coramo mira hacia arriba|cabeza
