@@ -1,1 +1,9 @@
-docker/brain/piper/
+# CORAMO v2
+__pycache__/
+*.pyc
+*.pt
+*.gguf
+*.onnx
+runs/
+.venv/
+venvs/
