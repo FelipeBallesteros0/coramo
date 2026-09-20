@@ -36,7 +36,7 @@
 **Interfaces:**
 - Produces: alias `ssh coramo` desde WSL; ruta `~/coramo` en el Xeon con rama `v2-planificacion`; carpetas `docs/instalacion/`, `docs/mediciones/`, `tools/bench/`.
 
-- [ ] **Step 1: Alias SSH en WSL**
+- [x] **Step 1: Alias SSH en WSL**
 
 ```bash
 cat >> ~/.ssh/config <<'CFG'
@@ -49,14 +49,14 @@ ssh coramo hostname
 ```
 Expected: `coramo`. (La IP cambia a 192.168.1.90 en la Task 2; se actualiza el alias ahí.)
 
-- [ ] **Step 2: Clonar el repo en el Xeon y crear la rama**
+- [x] **Step 2: Clonar el repo en el Xeon y crear la rama**
 
 ```bash
 ssh coramo 'git clone https://github.com/FelipeBallesteros0/coramo ~/coramo && cd ~/coramo && git checkout -b v2-planificacion'
 ```
 Expected: termina sin error; `ssh coramo 'cd ~/coramo && git branch --show-current'` imprime `v2-planificacion`.
 
-- [ ] **Step 3: Copiar el spec y este plan al clon del Xeon**
+- [x] **Step 3: Copiar el spec y este plan al clon del Xeon**
 
 ```bash
 scp -r ~/coramo/docs/superpowers coramo:~/coramo/docs/
@@ -64,7 +64,7 @@ ssh coramo 'cd ~/coramo && mkdir -p docs/instalacion docs/mediciones tools/bench
 ```
 Expected: `ssh coramo 'ls ~/coramo/docs/superpowers/specs'` lista el spec de 2026-09-18.
 
-- [ ] **Step 4: Iniciar la bitácora de instalación**
+- [x] **Step 4: Iniciar la bitácora de instalación**
 
 ```bash
 ssh coramo 'cat > ~/coramo/docs/instalacion/xeon.md <<EOT
@@ -80,7 +80,7 @@ Scripts de medición de latencia por backend. Se ejecutan en el Xeon dentro del 
 EOT'
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 ssh coramo 'cd ~/coramo && git add docs tools && git -c user.name="Felipe Ballesteros" -c user.email="felipe1024@gmail.com" commit -m "docs: bitácora de instalación del Xeon y carpeta de benchmarks"'
@@ -96,23 +96,23 @@ ssh coramo 'cd ~/coramo && git add docs tools && git -c user.name="Felipe Balles
 **Interfaces:**
 - Produces: la 4070 sin procesos gráficos; criterio que usan todas las mediciones posteriores.
 
-- [ ] **Step 1 (Felipe, físico): mover el cable HDMI** del conector de la 4070 (tarjeta del slot 1, la de arriba) al HDMI de la RX 580 (slot 2). Reiniciar sesión gráfica o el equipo.
+- [x] **Step 1 (Felipe, físico): mover el cable HDMI** del conector de la 4070 (tarjeta del slot 1, la de arriba) al HDMI de la RX 580 (slot 2). Reiniciar sesión gráfica o el equipo.
 
-- [ ] **Step 2: Verificar qué tarjeta tiene el monitor**
+- [x] **Step 2: Verificar qué tarjeta tiene el monitor**
 
 ```bash
 ssh coramo 'for c in /sys/class/drm/card*-*; do s=$(cat $c/status); [ "$s" = connected ] && echo "$(basename $c) -> vendor $(cat $(dirname $c)/../device/vendor 2>/dev/null || cat /sys/class/drm/$(basename $c | cut -d- -f1)/device/vendor)"; done'
 ```
 Expected: una línea `card0-HDMI-A-1 -> vendor 0x1002` (0x1002 = AMD). Si dice `0x10de`, el cable sigue en la NVIDIA.
 
-- [ ] **Step 3: Verificar que GNOME no usa la 4070**
+- [x] **Step 3: Verificar que GNOME no usa la 4070**
 
 ```bash
 ssh coramo 'nvidia-smi --query-gpu=memory.used --format=csv,noheader; nvidia-smi | grep -cE "gnome-shell|Xwayland"'
 ```
-Expected: memoria usada `< 100 MiB` y el conteo `0`. Si sigue en `1` o más: entrar a BIOS (tecla Supr al arrancar) → Advanced → System Agent / Graphics Configuration → **Primary Display = PCIE** y **PCIe slot = slot 2** (o "PEG2"); guardar y repetir.
+Expected: memoria usada `< 100 MiB` y el conteo `0`. Resultado 2026-09-20: Mutter seguía en la 4070 con el monitor en la RX 580; se resolvió por software con `/etc/udev/rules.d/61-mutter-primary-gpu.rules` (`SUBSYSTEM=="drm", KERNEL=="card*", KERNELS=="0000:02:00.0", TAG+="mutter-device-preferred-primary"`) y reinicio: 13 MiB usados, gnome-shell abre la 4070 solo con 3 MiB sin renderizar. Si aun así siguiera: entrar a BIOS (tecla Supr al arrancar) → Advanced → System Agent / Graphics Configuration → **Primary Display = PCIE** y **PCIe slot = slot 2** (o "PEG2"); guardar y repetir.
 
-- [ ] **Step 4: Documentar y commit**
+- [x] **Step 4: Documentar y commit**
 
 ```bash
 ssh coramo 'cat >> ~/coramo/docs/instalacion/xeon.md <<EOT
@@ -136,28 +136,28 @@ Estado medido el 2026-09-20: GNOME del usuario `coramo` ya tiene `sleep-inactive
 **Interfaces:**
 - Produces: `systemctl is-enabled sleep.target suspend.target hibernate.target hybrid-sleep.target` → `masked` ×4; `iw dev wlx90de80052ea8 get power_save` → `off`; ping por WiFi < 30 ms. La Task 2 reutiliza el archivo de NetworkManager creado aquí.
 
-- [ ] **Step 1: Enmascarar la suspensión en systemd (bloquea cualquier petición, venga de GNOME, de GDM o de un comando)**
+- [x] **Step 1: Enmascarar la suspensión en systemd (bloquea cualquier petición, venga de GNOME, de GDM o de un comando)**
 
 ```bash
 ssh coramo "echo coramo123 | sudo -S -p '' systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target >/dev/null 2>&1; systemctl is-enabled sleep.target suspend.target hibernate.target hybrid-sleep.target | tr '\n' ' '"
 ```
 Expected: `masked masked masked masked`.
 
-- [ ] **Step 2: GNOME del usuario y pantalla de login de GDM sin suspensión automática**
+- [x] **Step 2: GNOME del usuario y pantalla de login de GDM sin suspensión automática**
 
 ```bash
 ssh coramo "export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus; gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing'; gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-battery-type 'nothing'; gsettings set org.gnome.desktop.session idle-delay 0; gsettings get org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type; echo coramo123 | sudo -S -p '' -u gdm dbus-run-session -- gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing' 2>/dev/null && echo 'gdm ok' || echo 'gdm: no se pudo (systemd enmascarado ya lo cubre)'"
 ```
 Expected: `'nothing'` y `gdm ok` (si sale el aviso alternativo, no importa: el paso 1 impide suspender igual).
 
-- [ ] **Step 3: Regla udev para que los adaptadores USB de red nunca entren en autosuspend (heredada de v1, `docs/legado/01-red.md`)**
+- [x] **Step 3: Regla udev para que los adaptadores USB de red nunca entren en autosuspend (heredada de v1, `docs/legado/01-red.md`)**
 
 ```bash
 ssh coramo "printf 'ACTION==\"add\", SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"0e8d\", ATTRS{idProduct}==\"7961\", ATTR{power/control}=\"on\"\nACTION==\"add\", SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"0bda\", ATTRS{idProduct}==\"8153\", ATTR{power/control}=\"on\"\n' > /tmp/coramo.tmp && echo coramo123 | sudo -S -p '' install -m 644 /tmp/coramo.tmp /etc/udev/rules.d/70-usb-power.rules && rm -f /tmp/coramo.tmp; echo coramo123 | sudo -S -p '' udevadm control --reload; echo coramo123 | sudo -S -p '' udevadm trigger --subsystem-match=usb; sleep 2; for d in /sys/bus/usb/devices/*; do v=\$(cat \$d/idVendor 2>/dev/null); p=\$(cat \$d/idProduct 2>/dev/null); case \"\$v:\$p\" in 0e8d:7961|0bda:8153) echo \"\$v:\$p control=\$(cat \$d/power/control)\";; esac; done"
 ```
 Expected: `0e8d:7961 control=on` y `0bda:8153 control=on` (hoy ya están en `on`; la regla lo fija tras cada reinicio o reconexión).
 
-- [ ] **Step 4: WiFi sin ahorro de energía (NetworkManager)**
+- [x] **Step 4: WiFi sin ahorro de energía (NetworkManager)**
 
 ```bash
 ssh coramo "printf '[connection]\nwifi.powersave = 2\n' > /tmp/coramo.tmp && echo coramo123 | sudo -S -p '' install -m 644 /tmp/coramo.tmp /etc/NetworkManager/conf.d/wifi-powersave-off.conf && rm -f /tmp/coramo.tmp; echo coramo123 | sudo -S -p '' systemctl restart NetworkManager; sleep 6; iw dev wlx90de80052ea8 get power_save"
@@ -172,7 +172,7 @@ sleep 1800; ssh coramo 'uptime; journalctl -b --no-pager | grep -ciE "entering s
 ```
 Expected: `uptime` sigue creciendo, SSH responde a la primera y el conteo es `0`.
 
-- [ ] **Step 6: Documentar y commit**
+- [x] **Step 6: Documentar y commit**
 
 ```bash
 ssh coramo 'cat >> ~/coramo/docs/instalacion/xeon.md <<EOT
@@ -199,21 +199,21 @@ Estado medido el 2026-09-20 con el micrófono en el jack rosado trasero ("Rear M
 **Interfaces:**
 - Produces: fuente predeterminada `alsa_input.pci-0000_00_1b.0.analog-stereo` con volumen 0,35 (boost 0 dB, captura 100 %) y sumidero `alsa_output.pci-0000_00_1b.0.analog-stereo` a 0,60; ambiente entre −55 y −40 dBFS; la voz normal a 1 m entre −30 y −15 dBFS RMS sin tocar 0 dBFS. Estos nombres los usa el nodo `audio` del subproyecto A.
 
-- [ ] **Step 1: Fijar los volúmenes (WirePlumber los conserva entre reinicios)**
+- [x] **Step 1: Fijar los volúmenes (WirePlumber los conserva entre reinicios)**
 
 ```bash
 ssh coramo 'export XDG_RUNTIME_DIR=/run/user/1000; wpctl set-volume @DEFAULT_AUDIO_SOURCE@ 0.35; wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.6; wpctl get-volume @DEFAULT_AUDIO_SOURCE@; amixer -c 0 sget "Rear Mic Boost" | grep -oE "\[[0-9.]+dB\]" | head -1'
 ```
 Expected: `Volume: 0.35` y `[0.00dB]`.
 
-- [ ] **Step 2: Prueba de niveles y acústica**
+- [x] **Step 2: Prueba de niveles y acústica**
 
 ```bash
 scp ~/coramo/tools/bench/audio_check.sh coramo:~/coramo/tools/bench/ && ssh coramo 'bash ~/coramo/tools/bench/audio_check.sh'
 ```
 Expected: `ambiente: RMS -5x..-4x dBFS`, `hum 50 Hz` por debajo de −60 dBFS, y `tono 440 Hz ... -> > 20 dB (OK)`.
 
-- [ ] **Step 3: Prueba con voz (Felipe habla a 1 m durante la grabación)**
+- [x] **Step 3: Prueba con voz (Felipe habla a 1 m durante la grabación)**
 
 ```bash
 ssh coramo 'export XDG_RUNTIME_DIR=/run/user/1000; arecord -q -D default -d 8 -f S16_LE -r 16000 -c 1 /tmp/voz.wav; python3 - <<PY
@@ -237,14 +237,14 @@ Subir el boost no sirve con ninguno: con +10 dB el fondo pasa a −15 dBFS (agre
 2. Si sigue bajo 20 dB de SNR, cambiar el micrófono por uno USB con procesamiento propio (tipo conferencia) o acercarlo a la boca del interlocutor en el diseño de la cabeza.
 3. Mientras tanto, la compuerta de nivel del nodo `audio` (spec §6.1) se define **relativa al fondo medido** (fondo + 6 dB), no fija en −45 dBFS, o bloquearía la voz.
 
-- [ ] **Step 4: Reiniciar y comprobar que los volúmenes persisten**
+- [x] **Step 4: Reiniciar y comprobar que los volúmenes persisten**
 
 ```bash
 ssh coramo "echo coramo123 | sudo -S -p '' reboot"; sleep 90; ssh coramo 'export XDG_RUNTIME_DIR=/run/user/1000; wpctl get-volume @DEFAULT_AUDIO_SOURCE@; wpctl get-volume @DEFAULT_AUDIO_SINK@'
 ```
 Expected: `Volume: 0.35` y `Volume: 0.60`. (Requiere que la sesión gráfica de `coramo` arranque sola; si no, activar inicio de sesión automático en Ajustes → Usuarios, o mover el audio a un servicio de usuario en el subproyecto A.)
 
-- [ ] **Step 5: Documentar y commit**
+- [x] **Step 5: Documentar y commit**
 
 ```bash
 ssh coramo 'cat >> ~/coramo/docs/instalacion/xeon.md <<EOT
