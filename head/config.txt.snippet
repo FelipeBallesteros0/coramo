@@ -1,0 +1,5 @@
+# Añadir al final de /boot/firmware/config.txt de la RPi5 si `cam -l` no ve las dos cámaras.
+# Sustituir imx219 por el sensor real (imx219 = Camera Module v2, imx708 = v3, imx477 = HQ).
+camera_auto_detect=0
+dtoverlay=imx219,cam0
+dtoverlay=imx219,cam1

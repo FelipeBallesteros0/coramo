@@ -1,0 +1,13 @@
+[Unit]
+Description=Cámaras de la cabeza CORAMO (camera_ros)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=coramo
+ExecStart=/bin/bash -lc "source /opt/ros/lyrical/setup.bash && export RMW_IMPLEMENTATION=rmw_fastrtps_cpp ROS_DISCOVERY_SERVER=192.168.1.103:11811 ROS_DOMAIN_ID=7 && exec ros2 launch /home/coramo/coramo/head/head_cameras.launch.py"
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
