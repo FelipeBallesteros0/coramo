@@ -378,9 +378,9 @@ cd ~/coramo && git add docs && git -c user.name="Felipe Ballesteros" -c user.ema
 **Interfaces:**
 - Produces: confirmación de que las dos GPUs pueden trabajar a la vez sin reinicios.
 
-- [ ] **Step 1 (Felipe, físico): leer la etiqueta de la fuente** y anotar potencia total, amperios del riel de 12 V y cuántos conectores PCIe de 8 pines tiene. Mínimo aceptable: 750 W y tres conectores (dos para el adaptador de la 4070, uno para la RX 580).
+- [x] **Step 1 (Felipe, físico): leer la etiqueta de la fuente** y anotar potencia total, amperios del riel de 12 V y cuántos conectores PCIe de 8 pines tiene. Mínimo aceptable: 750 W y tres conectores (dos para el adaptador de la 4070, uno para la RX 580).
 
-- [ ] **Step 2: Escribir la carga de prueba**
+- [x] **Step 2: Escribir la carga de prueba**
 
 ```bash
 ssh coramo 'cat > ~/coramo/tools/bench/gpu_load.py <<EOT
@@ -397,14 +397,14 @@ print(f"{n} multiplicaciones en {segundos} s; max VRAM {torch.cuda.max_memory_al
 EOT'
 ```
 
-- [ ] **Step 3: Correr 120 s de carga mientras se vigila potencia y errores del kernel**
+- [x] **Step 3: Correr 120 s de carga mientras se vigila potencia y errores del kernel**
 
 ```bash
 ssh coramo 'export PATH=$HOME/.local/bin:$PATH; (nvidia-smi --query-gpu=power.draw,temperature.gpu,clocks.sm --format=csv -l 10 > /tmp/power.log &) ; ~/venvs/cuda-check/bin/python ~/coramo/tools/bench/gpu_load.py 120; pkill -f "nvidia-smi --query-gpu=power.draw"; tail -4 /tmp/power.log; echo coramo123 | sudo -S -p "" journalctl -k --since "-5 min" | grep -ciE "xid|reset|pcie bus error"'
 ```
-Expected: potencia entre 180 y 220 W, temperatura < 85 °C, y el último número `0` (sin errores Xid ni de bus). Si el equipo se reinicia o aparece un Xid: la fuente no alcanza o el adaptador de la 4070 está mal conectado; parar aquí.
+Expected: potencia entre 180 y 220 W, temperatura < 85 °C, y el último número `0` (sin errores Xid ni de bus). Resultado 2026-09-20: fuente de 750 W; 220 W sostenidos, 82 °C máx, 2,67 GHz, PCIe gen 3, 74 TFLOPS fp16, 0 errores, sin reinicio. Si el equipo se reinicia o aparece un Xid: la fuente no alcanza o el adaptador de la 4070 está mal conectado; parar aquí.
 
-- [ ] **Step 4: Documentar y commit**
+- [x] **Step 4: Documentar y commit**
 
 ```bash
 ssh coramo 'cat >> ~/coramo/docs/instalacion/xeon.md <<EOT
