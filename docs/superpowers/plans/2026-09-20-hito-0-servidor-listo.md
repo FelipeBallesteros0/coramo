@@ -565,14 +565,14 @@ ssh coramo 'cd ~/coramo && git add tools && git -c user.name="Felipe Ballesteros
 - Consumes: `~/datos/ordenes/NN.wav`, `comun.cargar_ordenes`, `comun.medir`.
 - Produces: p50/p95 de transcripción y WER aproximado sobre las 30 órdenes.
 
-- [ ] **Step 1: Entorno STT con las librerías CUDA por pip**
+- [x] **Step 1: Entorno STT con las librerías CUDA por pip**
 
 ```bash
 ssh coramo 'export PATH=$HOME/.local/bin:$PATH; uv venv ~/venvs/stt --python 3.12 -q && uv pip install --python ~/venvs/stt/bin/python -q faster-whisper nvidia-cublas-cu12 nvidia-cudnn-cu12 jiwer && ~/venvs/stt/bin/python -c "import ctranslate2; print(ctranslate2.__version__, ctranslate2.get_cuda_device_count())"'
 ```
 Expected: `4.x.y 1`. Si `0`: exportar `LD_LIBRARY_PATH` con las rutas de `nvidia/cublas/lib` y `nvidia/cudnn/lib` del venv (el script del paso 2 lo hace solo).
 
-- [ ] **Step 2: Script de benchmark**
+- [x] **Step 2: Script de benchmark**
 
 ```bash
 ssh coramo 'cat > ~/coramo/tools/bench/bench_stt.py <<EOT
@@ -600,9 +600,9 @@ for (i, t, _), _, h in res[:5]:
 EOT
 ~/venvs/stt/bin/python ~/coramo/tools/bench/bench_stt.py'
 ```
-Expected: `STT local whisper-turbo: p50 0.1x s | p95 0.2x s | WER < 10 %` y cinco pares ref/hyp legibles. La primera ejecución descarga el modelo (~1,6 GB).
+Expected: `STT local whisper-turbo: p50 0.1x s | p95 0.2x s | WER < 10 %` y cinco pares ref/hyp legibles. La primera ejecución descarga el modelo (~1,6 GB). Resultado 2026-09-20: `p50 0.16 s | p95 0.17 s | WER 8.7 %` sobre texto normalizado (sin puntuación ni tildes); errores en "ok", "rock" (anglicismos con voz sintética), "pon/pone" y números escritos en cifras. CTranslate2 4.8.2.
 
-- [ ] **Step 3: Commit**
+- [x] **Step 3: Commit**
 
 ```bash
 ssh coramo 'cd ~/coramo && git add tools && git -c user.name="Felipe Ballesteros" -c user.email="felipe1024@gmail.com" commit -m "bench: STT local con faster-whisper turbo"'
