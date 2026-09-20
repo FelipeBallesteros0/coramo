@@ -32,3 +32,9 @@ Cada sección de abajo la agrega la tarea del plan que la ejecuta.
 - ~/venvs/cuda-check: torch 2.14.0+cu130, torch.cuda.is_available() = True, RTX 4070 SUPER.
 - Trampas: la imagen de 26.04 no traía curl ni git; el instalador de uv responde 403 a urllib de Python (usar curl).
 - Disco tras instalar: 28 GB usados de 218.
+
+## Fuente (tarea 4, 2026-09-20)
+- Etiqueta: 750 W (dato de Felipe). Conectores: dos de 8 pines al adaptador de la 4070 y uno a la RX 580.
+- Prueba gpu_load.py 120 s en la 4070: potencia clavada en el límite de 220 W, temperatura de 47 a 82 °C, reloj 2,72 a 2,67 GHz (leve throttling térmico al final), PCIe gen 3 x16 bajo carga, 74 TFLOPS fp16.
+- Errores de kernel (Xid, reset, PCIe): 0. Sin reinicios. La fuente aguanta la 4070 a tope con la RX 580 y el Xeon activos.
+- Nota: la temperatura llega a 82 °C en 2 min; para cargas largas conviene revisar el flujo de aire del gabinete.
