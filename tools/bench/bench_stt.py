@@ -15,7 +15,12 @@ def transcribir(item):
     segs, _info = modelo.transcribe(str(DATOS / f"{i:02d}.wav"), language="es", beam_size=1, vad_filter=False)
     return " ".join(s.text.strip() for s in segs)
 p50, p95, res = medir(transcribir, cargar_ordenes())
-ref = [t.lower() for _, t, _ in cargar_ordenes()]; hyp = [r.lower() for _, _, r in res]
+import re, unicodedata
+def norm(t):
+    """minúsculas, sin puntuación ni tildes: el WER mide palabras, no ortografía"""
+    t = unicodedata.normalize("NFD", t.lower()); t = "".join(c for c in t if unicodedata.category(c) != "Mn")
+    return " ".join(re.sub(r"[^a-z0-9ñ ]+", " ", t).split())
+ref = [norm(t) for _, t, _ in cargar_ordenes()]; hyp = [norm(r) for _, _, r in res]
 imprimir("STT local whisper-turbo", p50, p95, f"| WER {wer(ref, hyp)*100:.1f} %")
-for (i, t, _), _, h in res[:5]:
-    print(f"  {i:02d} ref: {t} | hyp: {h}")
+for (i, t, _), _, h in res:
+    if norm(t) != norm(h): print(f"  {i:02d} ref: {t} | hyp: {h}")
