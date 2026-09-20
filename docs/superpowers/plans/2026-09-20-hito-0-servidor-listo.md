@@ -884,57 +884,36 @@ cd ~/coramo && git add docs && git -c user.name="Felipe Ballesteros" -c user.ema
 
 #### 11.A Arranque desde el SSD del shield M.2
 
-La Pi lleva un shield M.2 con un SSD NVMe. Arrancar desde él en vez de la microSD mejora mucho la lectura (NVMe por PCIe contra microSD), que es lo que hace lenta a la Pi al arrancar servicios y al instalar paquetes.
+**Inventario real (2026-09-20, por SSH a `coramo@192.168.1.104`, hostname `cabeza`):**
 
-**Condición crítica según el firmware de Raspberry Pi:** si el shield es el **Suptronics X1011** de v1 (o cualquier otro con **conmutador PCIe ASM1184e**), el arranque NVMe funciona **solo si el SSD es el único dispositivo en el conmutador**. Con un segundo periférico PCIe conectado, el bootloader no recorre el árbol de puentes, no encuentra el SSD y se queda colgado. Como las RX 580 se fueron al Xeon, la condición se cumple; aun así hay que verificar que no quede nada más conectado al shield. Si el shield es un HAT M.2 simple (sin conmutador), no hay restricción.
+| Elemento | Estado |
+|---|---|
+| Placa | Raspberry Pi 5 Model B Rev 1.0, Ubuntu 26.04.1, kernel 7.0.0-1017-raspi |
+| Shield M.2 | **Sin conmutador PCIe.** El SSD cuelga directo del puente del BCM2712 (`0001:01:00.0 MAXIO MAP1202`). No aplica la restricción del ASM1184e. |
+| SSD | `nvme0n1`, 238,5 GB, NXM-256 2242 (DRAM-less). **Vacío, sin tabla de particiones.** |
+| microSD | `mmcblk0`, 233 GB; raíz actual en `mmcblk0p2` (2,8 GB usados) |
+| Lectura medida | **SSD 432 MB/s contra microSD 82,6 MB/s: 5,2× más rápido** |
+| Bootloader | 2025-12-08, `BOOT_ORDER=0xf461` (microSD primero, luego NVMe) |
+| Arranque de Ubuntu | `root=LABEL=writable` en `/boot/firmware/current/cmdline.txt`; fstab por `LABEL`. **Riesgo: al clonar, las dos unidades tendrían la etiqueta `writable` y el arranque sería ambiguo.** Por eso el SSD se referencia por `PARTUUID` y lleva etiquetas propias (`SSDBOOT`, `writable-ssd`). |
+| Red | `wlan0` con 192.168.1.104 por DHCP; `eth0` y el USB Realtek `enxf8ce21123f7b`, ambos sin cable |
+| Cámaras | **Las dos detectadas y capturando**: dos OV5647 (Camera Module v1, 5 MP), una por puerto CSI (`i2c@80000` y `i2c@88000`), 24 a 29 fps en prueba. `camera_auto_detect=1` basta; no hace falta `config.txt.snippet`. |
 
-- [ ] **Step 1: Identificar el shield y comprobar que el sistema ve el SSD** (con la Pi arrancada desde la microSD)
+- [ ] **Step 1: Ejecutar la migración al SSD**
 
-```bash
-ssh coramo@<ip-cabeza> 'lspci; echo "--- bloques:"; lsblk -o NAME,SIZE,TYPE,MOUNTPOINTS,MODEL; echo "--- nvme:"; ls /dev/nvme* 2>/dev/null || echo "sin dispositivo NVMe"'
-```
-Expected: en `lspci`, o bien solo el controlador NVMe (HAT simple), o bien un `PCI bridge: ASMedia ASM1184e` **más** el NVMe colgando de él (X1011). En `lsblk`, un `nvme0n1` con el tamaño del SSD. Si no aparece: añadir `dtparam=pciex1` a `/boot/firmware/config.txt` y reiniciar.
-
-- [ ] **Step 2: Actualizar el bootloader y habilitar el arranque por PCIe**
-
-```bash
-ssh coramo@<ip-cabeza> "echo coramo123 | sudo -S -p '' apt-get install -y -qq rpi-eeprom && echo coramo123 | sudo -S -p '' rpi-eeprom-update -a; echo '--- config actual:'; echo coramo123 | sudo -S -p '' rpi-eeprom-config"
-```
-Expected: la configuración actual del EEPROM, con una línea `BOOT_ORDER=`.
-
-- [ ] **Step 3: Escribir BOOT_ORDER y PCIE_PROBE en el EEPROM**
-
-`BOOT_ORDER` se lee de derecha a izquierda: cada dígito es un intento. `6` = NVMe, `1` = microSD, `4` = USB, `f` = volver a empezar. `0xf416` significa: primero NVMe, luego USB, luego microSD, y repetir. Dejar la microSD en la lista permite volver a arrancar con ella si el SSD falla.
+El script `head/migrar_a_ssd.sh` (copiado en la Pi como `/tmp/a_ssd.sh`) hace todo en un paso: particiona el SSD, copia la raíz y `/boot/firmware` con rsync, reescribe el `fstab` y el `cmdline.txt` **del SSD** para que apunten a sus propias particiones por `PARTUUID`, y deja `BOOT_ORDER=0xf416` con `PCIE_PROBE=1`. Aborta solo si la raíz no está en la microSD o si el SSD ya tiene particiones.
 
 ```bash
-ssh coramo@<ip-cabeza> "echo coramo123 | sudo -S -p '' rpi-eeprom-config > /tmp/eeprom.txt
-grep -q '^BOOT_ORDER=' /tmp/eeprom.txt && sed -i 's/^BOOT_ORDER=.*/BOOT_ORDER=0xf416/' /tmp/eeprom.txt || echo 'BOOT_ORDER=0xf416' >> /tmp/eeprom.txt
-grep -q '^PCIE_PROBE=' /tmp/eeprom.txt || echo 'PCIE_PROBE=1' >> /tmp/eeprom.txt
-echo coramo123 | sudo -S -p '' rpi-eeprom-config --apply /tmp/eeprom.txt
-echo '--- quedará así tras reiniciar:'; grep -E 'BOOT_ORDER|PCIE_PROBE' /tmp/eeprom.txt"
+ssh cabeza 'bash /tmp/a_ssd.sh'
 ```
-Expected: `BOOT_ORDER=0xf416` y `PCIE_PROBE=1`.
+Expected: termina en `LISTO`, mostrando el `fstab` y el `root=PARTUUID=...` del SSD. **Borra el contenido del SSD**, que hoy está vacío. Requiere aprobación explícita de Felipe porque formatea un disco.
 
-- [ ] **Step 4: Poner el sistema en el SSD**
-
-Dos caminos; el primero es más limpio y es el recomendado:
-
-*Camino A, instalación nueva en el SSD (preferido).* Con el SSD en un adaptador USB-M.2 conectado al PC de Felipe: escribir con Raspberry Pi Imager la misma imagen **Ubuntu Server 26.04 LTS (64-bit)** que ya se usó, con la misma personalización (hostname `cabeza`, usuario `coramo`, contraseña `coramo123`, SSH con la llave pública de `~/.ssh/id_ed25519.pub`, sin WiFi). Devolver el SSD al shield y **retirar la microSD** para la primera prueba.
-
-*Camino B, clonar la microSD al SSD desde la propia Pi.* Sirve si no hay adaptador USB-M.2 y ya hay configuración hecha sobre la microSD:
+- [ ] **Step 2: Reiniciar y comprobar que arrancó del SSD**
 
 ```bash
-ssh coramo@<ip-cabeza> "echo coramo123 | sudo -S -p '' apt-get install -y -qq rsync parted && git clone -q https://github.com/geerlingguy/rpi-clone.git /tmp/rpi-clone && echo coramo123 | sudo -S -p '' cp /tmp/rpi-clone/rpi-clone /tmp/rpi-clone/rpi-clone-setup /usr/local/sbin/ && lsblk -o NAME,SIZE,TYPE | grep nvme"
-ssh -t coramo@<ip-cabeza> "sudo rpi-clone nvme0n1"   # pide confirmación y borra el SSD
+ssh cabeza 'sudo reboot'; sleep 60
+ssh cabeza 'findmnt -n -o SOURCE /; lsblk -o NAME,SIZE,MOUNTPOINTS | grep -E "nvme|mmcblk"; sudo hdparm -t --direct /dev/nvme0n1 | tail -1'
 ```
-Expected: `rpi-clone` termina con las dos particiones copiadas. **Borra todo el contenido del SSD**: confirmar antes que no hay nada que conservar.
-
-- [ ] **Step 5: Reiniciar sin microSD y comprobar que arrancó del SSD**
-
-```bash
-ssh coramo@<ip-cabeza> 'findmnt -n -o SOURCE /; lsblk -o NAME,SIZE,MOUNTPOINTS | head -6; echo "lectura secuencial:"; sudo hdparm -t /dev/nvme0n1 2>/dev/null | tail -1'
-```
-Expected: la raíz montada en `/dev/nvme0n1p2` (no `mmcblk0p2`). La lectura debería dar varios cientos de MB/s contra unas decenas de la microSD. Si la Pi no arranca sin microSD: volver a insertarla (el `1` de `0xf416` la deja como alternativa), revisar que el SSD sea el único dispositivo del shield y repetir el paso 1.
+Expected: raíz en `/dev/nvme0n1p2`. Si arranca desde la microSD igual, revisar que el EEPROM tomó `0xf416` (`sudo rpi-eeprom-config`). Recuperación: apagar y sacar el SSD; la Pi vuelve a la microSD, que queda intacta.
 
 #### 11.B Red, cámaras y ROS
 
