@@ -69,8 +69,43 @@ Conclusión: **cable o adaptador defectuoso**. A probar, en orden: otro cable Et
 
 Mientras tanto, **el WiFi cumple de sobra**: el video comprimido de las dos cámaras son unos 1,2 MB/s y ambas máquinas están en 5 GHz con menos de 9 ms de latencia.
 
+## ROS 2 y cámaras
+
+- **ROS 2 Lyrical Luth** desde `ros2-apt-source` (207 paquetes): `ros-lyrical-ros-base`, `rmw-fastrtps-cpp`, `camera-ros`, `compressed-image-transport`.
+- Entorno en `/etc/profile.d/coramo-ros.sh`: `RMW_IMPLEMENTATION=rmw_fastrtps_cpp`, `ROS_DISCOVERY_SERVER=192.168.1.103:11811` (el Xeon, por WiFi), `ROS_DOMAIN_ID=7`.
+- `chrony` con el Xeon como servidor preferido; el Xeon acepta clientes con `allow 192.168.1.0/24`.
+- Servicio **`head-cameras.service`**, arranca solo y se reinicia si falla. Publica:
+
+| Tema | Contenido |
+|---|---|
+| `/head/cam_left/image_raw` y `/compressed` | cámara izquierda, 640×480 |
+| `/head/cam_right/image_raw` y `/compressed` | cámara derecha, 640×480 |
+| `/head/cam_left/camera_info`, `/head/cam_right/camera_info` | calibración (aún sin calibrar) |
+
+**Medido desde el Xeon:** 15,07 Hz de media en `/head/cam_left/image_raw/compressed`, con mínimo 0,049 s y máximo 0,084 s entre cuadros, desviación 0,008 s. Es el objetivo de 15 FPS del spec, sobre WiFi.
+
+### Trampa: camera_ros trae su propia libcamera y no ve el hardware
+
+`ros-lyrical-camera-ros` depende de `ros-lyrical-libcamera` **0.7.2**, que convive con la del sistema (`libcamera0.7` **0.7.0** de Ubuntu). El nodo enlaza contra la de ROS y falla:
+
+```
+RPI pisp.cpp: Unable to acquire a CFE instance
+terminate called ... what(): no cameras available
+```
+
+El pipeline `rpi/pisp` sí está registrado en la de ROS, pero no reconoce el frontal de cámara de este kernel. La del sistema sí (`cam -l` lista las dos). Como **ambas comparten el soname `libcamera.so.0.7`**, basta anteponer la ruta del sistema:
+
+```
+export LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu:$LD_LIBRARY_PATH
+```
+
+Eso va en `ExecStart` de `head-cameras.service`. Sin ello el servicio arranca y muere en bucle.
+
+Nota menor: `camera_calibration_parsers` avisa que no encuentra el archivo de calibración. Es esperable hasta que se calibren las cámaras; no impide publicar.
+
 ## Pendiente
 
 - Reservar 192.168.1.104 para la cabeza en el router (hoy es DHCP).
 - Probar otro cable para el enlace directo.
-- ROS 2 Lyrical Luth, `camera_ros`, `chrony` contra el Xeon y el servicio `head-cameras.service`.
+- Calibrar las dos cámaras (`camera_calibration`) para llenar `camera_info`.
+- Prueba de 10 minutos de `ros2 topic hz` registrada en `docs/mediciones/`.
