@@ -17,7 +17,7 @@
 - La RX 580 es solo pantalla: **el monitor se conecta siempre al HDMI de la RX 580**, nunca a la 4070. Al terminar el hito, `nvidia-smi` no debe mostrar `gnome-shell` ni `Xwayland` en la 4070.
 - El servidor **nunca se suspende** (targets de sleep enmascarados) y **ningún ahorro de energía** toca la red: WiFi con powersave off y adaptadores USB de red sin autosuspend.
 - Python del sistema (3.14) no se toca. Cada servidor de modelo vive en `~/venvs/<nombre>` creado con `uv venv --python 3.12`.
-- Direcciones fijas: Xeon por cable **192.168.1.90/24**, cabeza RPi5 **192.168.1.91/24**, router 192.168.1.1. Discovery Server en `192.168.1.90:11811`.
+- Direcciones fijas: Xeon por cable **192.168.1.90/24** (mientras siga por WiFi: **192.168.1.103**, reservar en el router), cabeza RPi5 **192.168.1.91/24**, router 192.168.1.1. Discovery Server en `<IP del Xeon>:11811`.
 - Nombres de tools del benchmark = los del spec §6.2: `mano`, `brazo`, `cabeza`, `responder`, `detener`.
 - Latencias se reportan como **p50 y p95 sobre 30 peticiones**, en segundos con 2 decimales, en `docs/mediciones/2026-09-XX-hito0.md` (XX = día real de la medición).
 - Claves de API solo en `~/.config/coramo/env` del Xeon (modo 600). Nunca en el repo.
@@ -261,6 +261,8 @@ cd ~/coramo && git add docs tools && git -c user.name="Felipe Ballesteros" -c us
 ---
 
 ### Task 2: Red por cable (RTL8153) con IP fija; WiFi sin ahorro de energía
+
+> **Diferida (decisión de Felipe, 2026-09-20):** el Xeon seguirá por WiFi en el futuro próximo. Con el ahorro de energía apagado el ping es de 3 ms y la WiFi sube sola al arrancar, así que el resto del hito 0 se ejecuta sobre 192.168.1.103 (DHCP; conviene reservarla en el router). Esta tarea se retoma cuando haya cable, y la cabeza RPi5 (Task 11) usará la misma red de la casa con el Discovery Server en la IP que tenga el Xeon.
 
 **Files:**
 - Create (Xeon): `/etc/NetworkManager/conf.d/wifi-powersave-off.conf`
