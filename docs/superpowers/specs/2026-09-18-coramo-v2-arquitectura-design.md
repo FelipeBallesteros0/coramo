@@ -42,7 +42,7 @@ No hay fecha de defensa todavía. El plan se organiza por hitos, no por calendar
 | Electrónica del brazo | Raspberry Pi Pico 2 W → PCA9685 → BTS7960 → motores DC. Encoders AS5600 por multiplexor I2C (TCA9548A o equivalente). Firmware MicroPython parcial (protocolo de 24 valores, "sin hardware"). |
 | Mano | Servos SG90 por PCA9685. En v1 los manejaba un Arduino Mega; **en v2 no hay Arduino Mega**: todo cuelga del Pico. |
 | Cerebro v1 | Raspberry Pi 5 + 2× RX 580 por multiplexor PCIe x1. Pipeline VAD → Whisper small → wake word por texto → Qwen3-4B con tools → Arduino / Piper. Latencia 6 s (83 % en Whisper por el bus). |
-| Cerebro v2 (hardware) | Xeon E5-2670 + ASUS P9X79, 64 GB DDR3, RTX 4070 SUPER (12 GB) + RX 580 (8 GB), Ubuntu instalado, SSH en LAN. **Apagado por ahora**; Felipe lo enciende cuando empiece la tarea cero. |
+| Cerebro v2 (hardware) | Xeon E5-2697 v2 + ASUS P9X79 LE, 8×8 GB DDR3-1600, RTX 4070 SUPER (12 GB, PCIe 3.0 x16 real) + RX 580 (8 GB), SSD SATA 240 GB. Inventariado por SSH el 2026-09-20: Ubuntu 26.04.1, kernel 7.0, driver NVIDIA 595 ya instalado, sin ROS. Acceso `coramo@192.168.1.103` con llave. |
 | Simulación | `mujoco_test/` con un brazo antropomórfico genérico de 7 GDL y una base móvil; no describe el brazo real. |
 | Repositorio | `github.com/FelipeBallesteros0/coramo`, último commit 2026-05-22. |
 | Documentación | README, `docs/01..06`, coramo.cl (abril 2026), paper IEEE borrador, informe LaTeX, slides. Contradictorias entre sí. |
@@ -127,20 +127,28 @@ por visión con agarre de objetos, control de impedancia.
 
 ## 4. Hardware objetivo
 
-### 4.1 Cerebro: Xeon E5-2670 + P9X79
+### 4.1 Cerebro: Xeon E5-2697 v2 + P9X79 LE
 
-- 8 núcleos / 16 hilos Sandy Bridge-EP, 64 GB DDR3 cuádruple canal, PCIe 3.0.
-- **Sin AVX2** (solo AVX). PyTorch, CTranslate2 y llama.cpp funcionan con sus
+- 12 núcleos / 24 hilos Ivy Bridge-EP, 8×8 GB DDR3-1600 en cuádruple canal, PCIe 3.0. SSD SATA Kingston de 240 GB (191 GB libres). BIOS 4801 de 2014.
+- **Sin AVX2** (solo AVX, confirmado en `/proc/cpuinfo`). PyTorch, CTranslate2 y llama.cpp funcionan con sus
   rutas de respaldo, pero **ninguna inferencia se planifica en CPU**. Silero VAD
   y el remuestreo de audio sí corren en CPU sin problema.
-- RTX 4070 SUPER en slot x16: inferencia (CUDA). Sin monitor conectado.
-- RX 580 en el otro slot x16: pantalla del escritorio y Foxglove local. Se fija
+- RTX 4070 SUPER en 01:00.0, enlace PCIe 3.0 x16 confirmado: inferencia (CUDA).
+  Sin monitor conectado. **Hoy el HDMI está en la 4070** y GNOME le ocupa
+  275 MiB: mover el cable a la RX 580.
+- RX 580 en 02:00.0, x16: pantalla del escritorio y Foxglove local. Se fija
   como GPU primaria en BIOS para que la 4070 quede libre.
 - Fuente: 4070 SUPER (220 W) + RX 580 (185 W) + Xeon (115 W) exigen **≥ 750 W**.
   Verificar en la tarea cero.
 - Audio: micrófono USB y altavoz USB conectados al Xeon (no a la cabeza), para
   mantener la latencia de voz en una sola máquina. Se puede mover a la cabeza
   en una versión posterior si la distancia lo exige.
+- Red: la placa **no expone ninguna controladora Ethernet PCI** (no aparece en
+  `lspci`). Hay dos adaptadores USB heredados de v1: WiFi MediaTek MT7921U (hoy
+  activo, con ahorro de energía encendido → ping de 121 ms) y **Ethernet USB
+  Realtek RTL8153 gigabit** (reconocido, sin cable). El servidor va por cable
+  en el RTL8153; el WiFi queda de respaldo con el ahorro de energía apagado
+  (fix de v1).
 - Conexión al cuerpo: **USB** al Pico. El Pico no usa WiFi en v2.
 
 ### 4.2 Cabeza: Raspberry Pi 5 de v1
@@ -477,8 +485,9 @@ corriente resulta insuficiente, se reabre la decisión con datos.
 
 ### 8.2 DDS entre dos máquinas (la parte que dolió en el 4WD)
 
-- Cable Ethernet directo Xeon ↔ RPi5, IPs estáticas en una subred propia
-  (p. ej. 192.168.50.1 / 192.168.50.2), sin pasar por el WiFi de la casa.
+- Cable Ethernet directo Xeon (adaptador USB RTL8153) ↔ RPi5, IPs estáticas
+  en una subred propia (p. ej. 192.168.50.1 / 192.168.50.2), sin pasar por el
+  WiFi de la casa.
 - **Fast DDS Discovery Server** en el Xeon; ambas máquinas con
   `ROS_DISCOVERY_SERVER` apuntando a él. Sin multicast, sin
   `ROS_LOCALHOST_ONLY`, sin adivinar interfaces.
@@ -577,7 +586,8 @@ números. Eso es directamente material de la tesis.
 
 | Riesgo / decisión | Mitigación o cuándo se decide |
 |---|---|
-| El servidor está apagado; nada de la tarea cero se puede verificar hoy | La tarea cero es la primera acción cuando Felipe lo encienda. Este spec asume que Ubuntu está instalado y hay SSH; si no, la tarea cero lo instala. |
+| El servidor trae Ubuntu 26.04, y ROS 2 Jazzy solo tiene paquetes para 24.04 | Decisión de Felipe (sección 4.1): reinstalar 24.04 + Jazzy o quedarse en 26.04 + Lyrical Luth (LTS hasta 2031; `camera_ros` y `foxglove_bridge` ya publicados para Lyrical). |
+| Python 3.14 del sistema en 26.04 y ruedas de ML (torch, CTranslate2, onnxruntime) | Los modelos locales corren como **servidores de modelo** en su propio entorno `uv` con Python 3.12 (llama-server, un servidor HTTP para STT y otro para TTS). Los nodos ROS son clientes HTTP, igual que con la nube. Aplica en cualquiera de los dos SO. |
 | Xeon sin AVX2 | Ninguna inferencia en CPU. Verificar en tarea cero que PyTorch y CTranslate2 importan sin "Illegal instruction". |
 | Fuente insuficiente para dos GPUs | Verificar potencia y conectores PCIe antes de encender ambas. |
 | VRAM justa (≈ 9 de 12 GB) | Medir en tarea cero; bajar el LLM a Q4_K_M si supera 11 GB. |
