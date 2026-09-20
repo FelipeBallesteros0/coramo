@@ -140,9 +140,12 @@ por visión con agarre de objetos, control de impedancia.
   como GPU primaria en BIOS para que la 4070 quede libre.
 - Fuente: 4070 SUPER (220 W) + RX 580 (185 W) + Xeon (115 W) exigen **≥ 750 W**.
   Verificar en la tarea cero.
-- Audio: micrófono USB y altavoz USB conectados al Xeon (no a la cabeza), para
-  mantener la latencia de voz en una sola máquina. Se puede mover a la cabeza
-  en una versión posterior si la distancia lo exige.
+- Audio: micrófono y parlante **analógicos en la tarjeta integrada ALC892** del
+  Xeon (jack rosado trasero y salida verde; conectados el 2026-09-20 y
+  verificados con prueba acústica), no en la cabeza, para mantener la latencia
+  de voz en una sola máquina. Ganancia calibrada por PipeWire (fuente 0,35,
+  `Rear Mic Boost` en 0 dB: con boost el fondo satura). Se puede mover a la
+  cabeza o a USB en una versión posterior si la distancia lo exige.
 - Red: la placa **no expone ninguna controladora Ethernet PCI** (no aparece en
   `lspci`). Hay dos adaptadores USB heredados de v1: WiFi MediaTek MT7921U (hoy
   activo, con ahorro de energía encendido → ping de 121 ms) y **Ethernet USB

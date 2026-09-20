@@ -187,6 +187,67 @@ cd ~/coramo && git add docs && git -c user.name="Felipe Ballesteros" -c user.ema
 
 ---
 
+### Task 1c: Audio del cerebro (micrófono y parlante analógicos en la ALC892)
+
+Estado medido el 2026-09-20 con el micrófono en el jack rosado trasero ("Rear Mic") y el parlante en la salida verde ("Line Out Front") de la placa: la tarjeta integrada `HDA Intel PCH / ALC892` es la fuente y el sumidero predeterminados de PipeWire; no hay dispositivos de audio USB. El tono de 440 Hz reproducido por el parlante se detectó en el micrófono 45 dB sobre el fondo. **Trampa encontrada:** el control `Rear Mic Boost` multiplica el ruido de fondo (con +10 dB el ambiente sube a −15 dBFS y satura; con 0 dB baja a −49 dBFS). PipeWire mapea el volumen de la fuente sobre `Capture` y `Rear Mic Boost`, así que el ajuste se hace con `wpctl`, no con `amixer` (WirePlumber lo pisa).
+
+**Files:**
+- Create: `tools/bench/audio_check.sh` (ya en el repo: niveles + prueba acústica parlante→micrófono)
+- Modify: `docs/instalacion/xeon.md` (sección "Audio")
+
+**Interfaces:**
+- Produces: fuente predeterminada `alsa_input.pci-0000_00_1b.0.analog-stereo` con volumen 0,35 (boost 0 dB, captura 100 %) y sumidero `alsa_output.pci-0000_00_1b.0.analog-stereo` a 0,60; ambiente entre −55 y −40 dBFS; la voz normal a 1 m entre −30 y −15 dBFS RMS sin tocar 0 dBFS. Estos nombres los usa el nodo `audio` del subproyecto A.
+
+- [ ] **Step 1: Fijar los volúmenes (WirePlumber los conserva entre reinicios)**
+
+```bash
+ssh coramo 'export XDG_RUNTIME_DIR=/run/user/1000; wpctl set-volume @DEFAULT_AUDIO_SOURCE@ 0.35; wpctl set-volume @DEFAULT_AUDIO_SINK@ 0.6; wpctl get-volume @DEFAULT_AUDIO_SOURCE@; amixer -c 0 sget "Rear Mic Boost" | grep -oE "\[[0-9.]+dB\]" | head -1'
+```
+Expected: `Volume: 0.35` y `[0.00dB]`.
+
+- [ ] **Step 2: Prueba de niveles y acústica**
+
+```bash
+scp ~/coramo/tools/bench/audio_check.sh coramo:~/coramo/tools/bench/ && ssh coramo 'bash ~/coramo/tools/bench/audio_check.sh'
+```
+Expected: `ambiente: RMS -5x..-4x dBFS`, `hum 50 Hz` por debajo de −60 dBFS, y `tono 440 Hz ... -> > 20 dB (OK)`.
+
+- [ ] **Step 3: Prueba con voz (Felipe habla a 1 m durante la grabación)**
+
+```bash
+ssh coramo 'export XDG_RUNTIME_DIR=/run/user/1000; arecord -q -D default -d 8 -f S16_LE -r 16000 -c 1 /tmp/voz.wav; python3 - <<PY
+import wave, struct, math
+w=wave.open("/tmp/voz.wav"); d=w.readframes(w.getnframes()); s=struct.unpack("<%dh"%(len(d)//2), d)
+db=lambda v: 20*math.log10(max(v,1e-9)/32768); fr=16000
+v=[math.sqrt(sum(x*x for x in s[i:i+fr//2])/(fr//2)) for i in range(0,len(s)-fr//2,fr//2)]
+print(f"ventana mas fuerte {db(max(v)):.1f} dBFS | mas debil {db(min(v)):.1f} dBFS | pico {db(max(abs(x) for x in s)):.1f} dBFS")
+PY'
+```
+Expected: ventana más fuerte entre −30 y −15 dBFS, pico por debajo de −3 dBFS (sin recorte), ventana más débil cerca del ambiente. Si la voz queda bajo −35 dBFS, subir la fuente a 0,45 y repetir; nunca activar el boost.
+
+- [ ] **Step 4: Reiniciar y comprobar que los volúmenes persisten**
+
+```bash
+ssh coramo "echo coramo123 | sudo -S -p '' reboot"; sleep 90; ssh coramo 'export XDG_RUNTIME_DIR=/run/user/1000; wpctl get-volume @DEFAULT_AUDIO_SOURCE@; wpctl get-volume @DEFAULT_AUDIO_SINK@'
+```
+Expected: `Volume: 0.35` y `Volume: 0.60`. (Requiere que la sesión gráfica de `coramo` arranque sola; si no, activar inicio de sesión automático en Ajustes → Usuarios, o mover el audio a un servicio de usuario en el subproyecto A.)
+
+- [ ] **Step 5: Documentar y commit**
+
+```bash
+ssh coramo 'cat >> ~/coramo/docs/instalacion/xeon.md <<EOT
+
+## Audio
+- Micrófono analógico en el jack rosado trasero (Rear Mic) y parlante en el verde (Line Out Front) de la ALC892 integrada. Sin audio USB.
+- PipeWire: fuente alsa_input.pci-0000_00_1b.0.analog-stereo a 0,35 (= Rear Mic Boost 0 dB, Capture 100 %); sumidero alsa_output.pci-0000_00_1b.0.analog-stereo a 0,60.
+- Nunca subir Rear Mic Boost: con +10 dB el fondo pasa de -49 a -15 dBFS y satura.
+- audio_check.sh: ambiente X dBFS, tono 45 dB sobre el fondo. Voz a 1 m: X dBFS.
+EOT
+cd ~/coramo && git add docs tools && git -c user.name="Felipe Ballesteros" -c user.email="felipe1024@gmail.com" commit -m "docs(xeon): audio analógico calibrado; audio_check.sh"'
+```
+
+---
+
 ### Task 2: Red por cable (RTL8153) con IP fija; WiFi sin ahorro de energía
 
 **Files:**
@@ -962,7 +1023,7 @@ Expected: GitHub muestra `main` con README nuevo, `docs/legado/`, y la rama `v1-
 
 ## Self-review (hecho al escribir el plan)
 
-- **Cobertura del spec, hito 0:** Ubuntu 26.04 (T0), driver NVIDIA y CUDA por pip (T3), RX 580 como pantalla (T1), sin suspensión ni ahorro de energía en red (T1b), red por cable RTL8153 (T2), fuente (T4), ROS 2 Lyrical + Discovery Server (T10), servidores de modelo en uv 3.12 (T5–T7 crean los venvs; los servidores HTTP propios de STT/TTS son del subproyecto A), RPi5 cabeza con 26.04 + Lyrical (T11), tabla de latencia por backend p50/p95 de 30 peticiones (T5–T8, T12), FPS del detector (T9), cámaras visibles desde el Xeon con `hz` de 10 min (T11), tabla de decisión (T12).
+- **Cobertura del spec, hito 0:** Ubuntu 26.04 (T0), driver NVIDIA y CUDA por pip (T3), RX 580 como pantalla (T1), sin suspensión ni ahorro de energía en red (T1b), audio calibrado (T1c), red por cable RTL8153 (T2), fuente (T4), ROS 2 Lyrical + Discovery Server (T10), servidores de modelo en uv 3.12 (T5–T7 crean los venvs; los servidores HTTP propios de STT/TTS son del subproyecto A), RPi5 cabeza con 26.04 + Lyrical (T11), tabla de latencia por backend p50/p95 de 30 peticiones (T5–T8, T12), FPS del detector (T9), cámaras visibles desde el Xeon con `hz` de 10 min (T11), tabla de decisión (T12).
 - **Fuera del hito 0, a propósito:** grabar voces reales (spec §6.4, subproyecto A), nodos ROS del cerebro, protocolo del Pico.
 - **Consistencia:** `comun.cargar_ordenes/medir/imprimir` se definen en T5 y se usan en T6, T7, T8; `tools_coramo.json` se define en T7 y se usa en T8; IPs 192.168.1.90/.91 y `ROS_DOMAIN_ID=7` iguales en T2, T10, T11.
 - **Riesgos abiertos que el plan no puede resolver por adelantado:** nombre exacto del paquete CUDA en el archivo de 26.04 (T3 trae alternativa), modelo de las cámaras CSI (T11 paso 2 y snippet), existencia de `--chat-template-kwargs` en la versión de llama.cpp clonada (T7 trae alternativa), y si `claude-sonnet-5` acepta `thinking disabled` con el effort por defecto (T8 trae alternativa).
