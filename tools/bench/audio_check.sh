@@ -11,8 +11,14 @@ f.writeframes(b''.join(struct.pack('<h', int(12000*math.sin(2*math.pi*440*i/fr)*
 PY
 echo "fuente: $(wpctl get-volume @DEFAULT_AUDIO_SOURCE@)  salida: $(wpctl get-volume @DEFAULT_AUDIO_SINK@)"
 amixer -c 0 sget 'Rear Mic Boost' | grep -oE 'Front Left: [0-9]+ \[[0-9]+%\] \[[0-9.]+dB\]' | sed 's/^/boost: /'
-arecord -q -D default -d 3 -f S16_LE -r 16000 -c 1 /tmp/amb.wav
-(arecord -q -D default -d 5 -f S16_LE -r 16000 -c 1 /tmp/loop.wav &); sleep 1.5; aplay -q -D default /tmp/tono.wav; sleep 3
+# La captura tiene un transitorio de ~2 s al abrirse (medido 2026-09-20): se graban 5,5 s y se analizan los ultimos 3 s.
+arecord -q -D default -d 5.5 -f S16_LE -r 16000 -c 1 /tmp/amb_full.wav
+python3 - <<'PY'
+import wave
+w=wave.open('/tmp/amb_full.wav'); fr=w.getframerate(); n=w.getnframes(); w.setpos(n-3*fr); d=w.readframes(3*fr); w.close()
+o=wave.open('/tmp/amb.wav','wb'); o.setnchannels(1); o.setsampwidth(2); o.setframerate(fr); o.writeframes(d); o.close()
+PY
+(arecord -q -D default -d 7 -f S16_LE -r 16000 -c 1 /tmp/loop.wav &); sleep 3.5; aplay -q -D default /tmp/tono.wav; sleep 3
 python3 - <<'PY'
 import wave, struct, math
 def leer(p):
@@ -24,7 +30,7 @@ def goertzel(s, f, fr=16000):
     for x in s: s0=x+c*s1-s2; s2=s1; s1=s0
     return math.sqrt(max(s1*s1+s2*s2-c*s1*s2,0))/(len(s)/2)
 amb=leer('/tmp/amb.wav'); print(f"ambiente: RMS {db(rms(amb)):.1f} dBFS | pico {db(max(abs(x) for x in amb)):.1f} dBFS | hum 50 Hz {db(goertzel(amb,50)):.1f} dBFS")
-lp=leer('/tmp/loop.wav'); fr=16000; niv=[db(goertzel(lp[i*fr//2:(i+1)*fr//2],440)) for i in range(10)]
+lp=leer('/tmp/loop.wav')[2*16000:]; fr=16000; niv=[db(goertzel(lp[i*fr//2:(i+1)*fr//2],440)) for i in range(10)]
 base=sum(sorted(niv)[:4])/4; tono=max(niv)
 print(f"tono 440 Hz en el mic: {tono:.1f} dBFS vs fondo {base:.1f} dBFS -> {tono-base:.1f} dB ({'OK' if tono-base>20 else 'FALLO: el mic no oye el parlante'})")
 PY

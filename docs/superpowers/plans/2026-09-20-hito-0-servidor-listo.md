@@ -230,6 +230,8 @@ Medido el 2026-09-20 (Rear Mic, boost 0 dB, fuente 0,35) con dos micrófonos ana
 - Micrófono 1: voz a 1 m −36 dBFS y a 30 cm −34 dBFS, fondo −46 a −49 dBFS → SNR de 10 a 14 dB. Descartado.
 - **Micrófono 2 (el que queda instalado):** voz a 30 cm −22 dBFS, fondo −42 dBFS, pico −6,6 dBFS, sin recortes → **SNR 19–20 dB**, en el límite del criterio pero utilizable para órdenes cortas. Con la fuente en 0,40 la voz sube a −19 dBFS pero el pico llega a −1 dBFS (sin margen): por eso queda en 0,35.
 
+La entrada tiene un **transitorio de ~2 s al abrir la captura** (arranca a −3 dBFS y decae a −42): `audio_check.sh` descarta los primeros 2,5 s, y el nodo `audio` del subproyecto A captura de forma continua, así que no le afecta.
+
 Subir el boost no sirve con ninguno: con +10 dB el fondo pasa a −15 dBFS (agrega ruido, no señal). Si más adelante hace falta más SNR, en este orden:
 1. Probar el mismo micrófono en el adaptador USB **PCM2902** heredado de v1 (tiene su propio preamplificador y ADC): conectar, verificar que aparece en `arecord -l` como `USB Audio`, hacerlo fuente predeterminada con `wpctl set-default <id>` y repetir los pasos 2 y 3.
 2. Si sigue bajo 20 dB de SNR, cambiar el micrófono por uno USB con procesamiento propio (tipo conferencia) o acercarlo a la boca del interlocutor en el diseño de la cabeza.
