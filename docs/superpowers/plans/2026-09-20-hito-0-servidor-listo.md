@@ -917,17 +917,13 @@ cd ~/coramo && git add docs && git -c user.name="Felipe Ballesteros" -c user.ema
 
 - [x] **Step 6: Verificación de las dos cámaras** — hecho el 2026-09-20. `cam -l` lista las dos OV5647 y ambas capturan a 29 fps tras arrancar del SSD. No hacen falta overlays: `camera_auto_detect=1` basta, y `head/config.txt.snippet` queda solo por si se cambian los sensores.
 
-**Trampa encontrada:** en Ubuntu el usuario creado por cloud-init **no queda en el grupo `video`**, así que libcamera falla con `Permission denied` en `/dev/media*` y `cam -l` no lista nada. Arreglo aplicado, necesario también para que `head-cameras.service` funcione (corre como `User=coramo`):
+**Tres trampas encontradas el 2026-09-20, todas resueltas y documentadas en `docs/instalacion/cabeza.md`:**
 
-```bash
-ssh cabeza "echo coramo123 | sudo -S -p '' usermod -aG video,render coramo"
-```
-Los grupos toman efecto en la siguiente sesión. Verificación: `ssh cabeza 'id -nG'` debe incluir `video` y `render`.
+1. El usuario de cloud-init **no queda en el grupo `video`** → libcamera falla con `Permission denied` y `cam -l` no lista nada. `sudo usermod -aG video,render coramo`. Hace falta también para `head-cameras.service`.
+2. Cambiar la etiqueta de la partición de arranque **rompe cloud-init**: busca el seed por `fs_label: system-boot`, no lo encontró en `SSDBOOT`, cayó a `DataSourceNone` y regeneró el netplan **sin WiFi**. Con la microSD puesta no se notaba porque leía el seed de ella; al sacarla, la Pi se quedó sin red. Arreglo permanente: `fs_label: SSDBOOT` en `/etc/cloud/cloud.cfg.d/99-fake-cloud.cfg`.
+3. **Sin `iw` el país no llega al chip WiFi** y 5 GHz queda bloqueado (misma trampa que la Raspberry del 4WD). `apt install iw wireless-regdb` + `iw reg set CL`.
 
-**IDs de las cámaras** (usar el ID, no el índice, porque el orden de enumeración puede cambiar entre arranques):
-
-- `/base/axi/pcie@1000120000/rp1/i2c@88000/ov5647@36`
-- `/base/axi/pcie@1000120000/rp1/i2c@80000/ov5647@36`
+**Verificado tras reiniciar sin microSD:** raíz en `/dev/nvme0n1p2`, arranque en **6,3 s**, `eth0` y `wlan0` arriba, netplan conserva `wifis`, `cloud-init query` devuelve el instance-id correcto, país CL, WiFi en 5 GHz y **las dos cámaras detectadas**.
 
 - [ ] **Step 6b: IP fija y reserva en el router**
 
