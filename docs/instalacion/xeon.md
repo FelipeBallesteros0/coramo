@@ -19,3 +19,9 @@ Cada sección de abajo la agrega la tarea del plan que la ejecuta.
 - Nunca subir Rear Mic Boost: con +10 dB el fondo pasa de -49 a -15 dBFS y satura. Ajustar solo con wpctl (WirePlumber pisa amixer).
 - Voz a 30 cm: -22 dBFS sobre fondo -42 dBFS (SNR 19-20 dB), pico -6,6 dBFS, sin recortes. Micrófono 1 descartado (SNR 14 dB).
 - Transitorio de ~2 s al abrir la captura; audio_check.sh lo descarta. Prueba acústica parlante->mic: tono 440 Hz > 40 dB sobre el fondo.
+
+## Pantalla (tarea 1, 2026-09-20)
+- Monitor en el HDMI de la RX 580 (card0, vendor 0x1002). La 4070 sin monitor.
+- Mutter elegía la 4070 como GPU primaria (270 MiB de gnome-shell) aunque el monitor estuviera en la RX 580. Arreglo por software, sin tocar la BIOS: /etc/udev/rules.d/61-mutter-primary-gpu.rules etiqueta la tarjeta 0000:02:00.0 con mutter-device-preferred-primary.
+- Tras reiniciar: la 4070 queda con 13 MiB usados; gnome-shell solo la abre con 3 MiB (sin renderizar). Criterio cumplido.
+- La sesión gráfica de coramo arranca sola al encender.
