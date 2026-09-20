@@ -329,32 +329,32 @@ cd ~/coramo && git add docs && git -c user.name="Felipe Ballesteros" -c user.ema
 **Interfaces:**
 - Produces: `uv` en `~/.local/bin`, Python 3.12 gestionado por `uv`, `nvcc` disponible, `espeak-ng`, `ffmpeg`, `build-essential`, `cmake`, `git-lfs`, `htop`, `nvtop`.
 
-- [ ] **Step 1: Paquetes del sistema**
+- [x] **Step 1: Paquetes del sistema**
 
 ```bash
 ssh coramo "echo coramo123 | sudo -S -p '' apt-get update -qq && echo coramo123 | sudo -S -p '' apt-get install -y -qq build-essential cmake git git-lfs curl wget htop nvtop espeak-ng ffmpeg libsndfile1 alsa-utils python3-venv nvidia-cuda-toolkit && nvcc --version | tail -1"
 ```
-Expected: última línea `Cuda compilation tools, release 12.x` o `13.x`. Si `nvidia-cuda-toolkit` no existe en el archivo de 26.04, usar el repositorio de NVIDIA:
+Expected: última línea `Cuda compilation tools, release 12.x` o `13.x`. Resultado 2026-09-20: `Build cuda_12.4.r12.4` desde el archivo de Ubuntu 26.04. Ojo: la imagen no traía `curl` ni `git`. Si `nvidia-cuda-toolkit` no existe en el archivo de 26.04, usar el repositorio de NVIDIA:
 ```bash
 ssh coramo "wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2604/x86_64/cuda-keyring_1.1-1_all.deb -O /tmp/k.deb && echo coramo123 | sudo -S -p '' dpkg -i /tmp/k.deb && echo coramo123 | sudo -S -p '' apt-get update -qq && echo coramo123 | sudo -S -p '' apt-get install -y -qq cuda-toolkit-13-2 && ls /usr/local/cuda/bin/nvcc"
 ```
 (Si `ubuntu2604` tampoco existe todavía, usar `ubuntu2404` del mismo URL: el toolkit es solo userland y funciona con el driver 595.)
 
-- [ ] **Step 2: Instalar `uv` y Python 3.12**
+- [x] **Step 2: Instalar `uv` y Python 3.12**
 
 ```bash
 ssh coramo 'curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1; export PATH=$HOME/.local/bin:$PATH; uv --version && uv python install 3.12 && uv python list | grep 3.12'
 ```
 Expected: `uv 0.x.y` y una línea `cpython-3.12.x-linux-x86_64-gnu` instalada.
 
-- [ ] **Step 3: Entorno de verificación de CUDA**
+- [x] **Step 3: Entorno de verificación de CUDA**
 
 ```bash
 ssh coramo 'export PATH=$HOME/.local/bin:$PATH; mkdir -p ~/venvs && uv venv ~/venvs/cuda-check --python 3.12 -q && uv pip install --python ~/venvs/cuda-check/bin/python -q torch && ~/venvs/cuda-check/bin/python -c "import torch; print(torch.__version__, torch.cuda.is_available(), torch.cuda.get_device_name(0))"'
 ```
-Expected: `2.x.y+cu12x True NVIDIA GeForce RTX 4070 SUPER`. Si `False`: el driver no está cargado (`nvidia-smi` debe funcionar) o la rueda es CPU; reinstalar con `--index-url https://download.pytorch.org/whl/cu128`.
+Expected: `2.x.y+cu12x True NVIDIA GeForce RTX 4070 SUPER`. Resultado 2026-09-20: `2.14.0+cu130 True NVIDIA GeForce RTX 4070 SUPER` (PyPI ya publica ruedas CUDA 13; funcionan con el driver 595). Si `False`: el driver no está cargado (`nvidia-smi` debe funcionar) o la rueda es CPU; reinstalar con `--index-url https://download.pytorch.org/whl/cu128`.
 
-- [ ] **Step 4: Documentar y commit**
+- [x] **Step 4: Documentar y commit**
 
 ```bash
 ssh coramo 'cat >> ~/coramo/docs/instalacion/xeon.md <<EOT
