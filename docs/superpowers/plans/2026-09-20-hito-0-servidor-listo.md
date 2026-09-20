@@ -874,102 +874,110 @@ cd ~/coramo && git add docs && git -c user.name="Felipe Ballesteros" -c user.ema
 
 ---
 
-### Task 11: Cabeza RPi5 con Ubuntu 26.04, Lyrical y las dos cámaras
+### Task 11: Cabeza RPi5 con Ubuntu 26.04 en el SSD, Lyrical y las dos cámaras
 
 **Files:**
-- Create: `head/README.md`, `head/config.txt.snippet`, `head/head_cameras.launch.py`, `head/head-cameras.service`, `docs/instalacion/cabeza.md`
+- Create: `head/README.md`, `head/config.txt.snippet`, `head/head_cameras.launch.py`, `head/head-cameras.service` (ya en el repo), `docs/instalacion/cabeza.md`
 
 **Interfaces:**
-- Produces: RPi5 en `192.168.1.91` publicando `/head/cam_left/image_raw/compressed` y `/head/cam_right/image_raw/compressed` a 640×480 y 15 FPS, visibles desde el Xeon.
+- Produces: RPi5 con IP fija publicando `/head/cam_left/image_raw/compressed` y `/head/cam_right/image_raw/compressed` a 640×480 y 15 FPS, visibles desde el Xeon.
 
-- [ ] **Step 1 (Felipe, físico): reinstalar la RPi5.** Quitar el X1011, las RX 580 y su alimentación. Con Raspberry Pi Imager en Windows: **Ubuntu Server 26.04 LTS (64-bit)** en la tarjeta o NVMe; en "personalizar": hostname `cabeza`, usuario `coramo`, contraseña `coramo123`, SSH activado con la llave pública de `~/.ssh/id_ed25519.pub`, sin WiFi. Conectar las dos cámaras CSI y un cable Ethernet al mismo router/switch que el Xeon. Arrancar.
+#### 11.A Arranque desde el SSD del shield M.2
 
-- [ ] **Step 2: IP fija y verificación de cámaras**
+La Pi lleva un shield M.2 con un SSD NVMe. Arrancar desde él en vez de la microSD mejora mucho la lectura (NVMe por PCIe contra microSD), que es lo que hace lenta a la Pi al arrancar servicios y al instalar paquetes.
 
-```bash
-ssh coramo@cabeza.local "echo coramo123 | sudo -S -p '' nmcli con mod netplan-eth0 ipv4.method manual ipv4.addresses 192.168.1.91/24 ipv4.gateway 192.168.1.1 ipv4.dns 192.168.1.1 2>/dev/null || (nmcli -t -f NAME con show | head -1); echo coramo123 | sudo -S -p '' nmcli con up netplan-eth0 >/dev/null 2>&1; hostname -I"
-ssh coramo@192.168.1.91 "echo coramo123 | sudo -S -p '' apt-get update -qq && echo coramo123 | sudo -S -p '' apt-get install -y -qq libcamera-tools chrony && cam -l"
-```
-Expected: `192.168.1.91` y `cam -l` listando **2** cámaras (`/base/axi/pcie@.../rp1/i2c@88000/imx…@1a` y `…i2c@80000/…`). Si lista 1 o 0: agregar a `/boot/firmware/config.txt` las líneas de `head/config.txt.snippet` (paso 3) con el modelo real de las cámaras y reiniciar.
+**Condición crítica según el firmware de Raspberry Pi:** si el shield es el **Suptronics X1011** de v1 (o cualquier otro con **conmutador PCIe ASM1184e**), el arranque NVMe funciona **solo si el SSD es el único dispositivo en el conmutador**. Con un segundo periférico PCIe conectado, el bootloader no recorre el árbol de puentes, no encuentra el SSD y se queda colgado. Como las RX 580 se fueron al Xeon, la condición se cumple; aun así hay que verificar que no quede nada más conectado al shield. Si el shield es un HAT M.2 simple (sin conmutador), no hay restricción.
 
-- [ ] **Step 3: Archivos de la cabeza en el repo (se escriben en WSL)**
+- [ ] **Step 1: Identificar el shield y comprobar que el sistema ve el SSD** (con la Pi arrancada desde la microSD)
 
 ```bash
-mkdir -p ~/coramo/head && cat > ~/coramo/head/config.txt.snippet <<'EOT'
-# Añadir al final de /boot/firmware/config.txt de la RPi5 si cam -l no ve las dos cámaras.
-# Sustituir imx219 por el sensor real (imx219 = Camera Module v2, imx708 = v3, imx477 = HQ).
-camera_auto_detect=0
-dtoverlay=imx219,cam0
-dtoverlay=imx219,cam1
-EOT
-cat > ~/coramo/head/head_cameras.launch.py <<'EOT'
-"""Publica las dos cámaras CSI de la cabeza a 640x480 y 15 FPS con camera_ros."""
-from launch import LaunchDescription
-from launch_ros.actions import Node
-
-def camara(nombre, indice):
-    return Node(package="camera_ros", executable="camera_node", namespace=f"/head/{nombre}", name="camera",
-                parameters=[{"camera": indice, "width": 640, "height": 480, "format": "YUYV",
-                             "FrameDurationLimits": [66666, 66666]}])  # 15 FPS en microsegundos
-
-def generate_launch_description():
-    return LaunchDescription([camara("cam_left", 0), camara("cam_right", 1)])
-EOT
-cat > ~/coramo/head/head-cameras.service <<'EOT'
-[Unit]
-Description=Cámaras de la cabeza CORAMO (camera_ros)
-After=network-online.target
-Wants=network-online.target
-
-[Service]
-User=coramo
-ExecStart=/bin/bash -lc "source /opt/ros/lyrical/setup.bash && export RMW_IMPLEMENTATION=rmw_fastrtps_cpp ROS_DISCOVERY_SERVER=192.168.1.90:11811 ROS_DOMAIN_ID=7 && exec ros2 launch /home/coramo/coramo/head/head_cameras.launch.py"
-Restart=always
-RestartSec=3
-
-[Install]
-WantedBy=multi-user.target
-EOT
-cat > ~/coramo/head/README.md <<'EOT'
-# Cabeza (RPi5)
-Ubuntu Server 26.04 + ROS 2 Lyrical base + camera_ros. IP fija 192.168.1.91. Publica /head/cam_left y /head/cam_right (640x480, 15 FPS, JPEG). Servicio: head-cameras.service. Instalación: docs/instalacion/cabeza.md.
-EOT
-cd ~/coramo && git add head && git -c user.name="Felipe Ballesteros" -c user.email="felipe1024@gmail.com" commit -q -m "head: launch de cámaras, servicio y snippet de config" && echo ok
+ssh coramo@<ip-cabeza> 'lspci; echo "--- bloques:"; lsblk -o NAME,SIZE,TYPE,MOUNTPOINTS,MODEL; echo "--- nvme:"; ls /dev/nvme* 2>/dev/null || echo "sin dispositivo NVMe"'
 ```
+Expected: en `lspci`, o bien solo el controlador NVMe (HAT simple), o bien un `PCI bridge: ASMedia ASM1184e` **más** el NVMe colgando de él (X1011). En `lsblk`, un `nvme0n1` con el tamaño del SSD. Si no aparece: añadir `dtparam=pciex1` a `/boot/firmware/config.txt` y reiniciar.
 
-- [ ] **Step 4: ROS 2 en la cabeza y sincronía de reloj**
+- [ ] **Step 2: Actualizar el bootloader y habilitar el arranque por PCIe**
 
 ```bash
-scp -r ~/coramo/head coramo@192.168.1.91:~/coramo/ 2>/dev/null || (ssh coramo@192.168.1.91 'mkdir -p ~/coramo' && scp -r ~/coramo/head coramo@192.168.1.91:~/coramo/)
-ssh coramo@192.168.1.91 "echo coramo123 | sudo -S -p '' apt-get install -y -qq software-properties-common curl && echo coramo123 | sudo -S -p '' add-apt-repository -y universe >/dev/null && V=\$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F tag_name | awk -F'\"' '{print \$4}') && curl -sL -o /tmp/ros2-apt-source.deb \"https://github.com/ros-infrastructure/ros-apt-source/releases/download/\${V}/ros2-apt-source_\${V}.\$(. /etc/os-release && echo \$VERSION_CODENAME)_all.deb\" && echo coramo123 | sudo -S -p '' dpkg -i /tmp/ros2-apt-source.deb && echo coramo123 | sudo -S -p '' apt-get update -qq && echo coramo123 | sudo -S -p '' apt-get install -y -qq ros-lyrical-ros-base ros-lyrical-rmw-fastrtps-cpp ros-lyrical-camera-ros ros-lyrical-compressed-image-transport && printf 'server 192.168.1.90 iburst prefer\n' > /tmp/coramo.tmp && echo coramo123 | sudo -S -p '' sh -c 'cat /tmp/coramo.tmp >> /etc/chrony/chrony.conf' && rm -f /tmp/coramo.tmp && echo coramo123 | sudo -S -p '' systemctl restart chrony && sleep 5 && chronyc tracking | grep -E 'Reference ID|System time'"
+ssh coramo@<ip-cabeza> "echo coramo123 | sudo -S -p '' apt-get install -y -qq rpi-eeprom && echo coramo123 | sudo -S -p '' rpi-eeprom-update -a; echo '--- config actual:'; echo coramo123 | sudo -S -p '' rpi-eeprom-config"
 ```
-Expected: `Reference ID : C0A8015A (192.168.1.90)` y `System time : 0.00x seconds` (en el Xeon, `chrony` debe permitir clientes: `allow 192.168.1.0/24` en `/etc/chrony/chrony.conf` y reinicio; instalar `chrony` en el Xeon si falta).
+Expected: la configuración actual del EEPROM, con una línea `BOOT_ORDER=`.
 
-- [ ] **Step 5: Servicio de cámaras y prueba de 10 minutos desde el Xeon**
+- [ ] **Step 3: Escribir BOOT_ORDER y PCIE_PROBE en el EEPROM**
+
+`BOOT_ORDER` se lee de derecha a izquierda: cada dígito es un intento. `6` = NVMe, `1` = microSD, `4` = USB, `f` = volver a empezar. `0xf416` significa: primero NVMe, luego USB, luego microSD, y repetir. Dejar la microSD en la lista permite volver a arrancar con ella si el SSD falla.
+
+```bash
+ssh coramo@<ip-cabeza> "echo coramo123 | sudo -S -p '' rpi-eeprom-config > /tmp/eeprom.txt
+grep -q '^BOOT_ORDER=' /tmp/eeprom.txt && sed -i 's/^BOOT_ORDER=.*/BOOT_ORDER=0xf416/' /tmp/eeprom.txt || echo 'BOOT_ORDER=0xf416' >> /tmp/eeprom.txt
+grep -q '^PCIE_PROBE=' /tmp/eeprom.txt || echo 'PCIE_PROBE=1' >> /tmp/eeprom.txt
+echo coramo123 | sudo -S -p '' rpi-eeprom-config --apply /tmp/eeprom.txt
+echo '--- quedará así tras reiniciar:'; grep -E 'BOOT_ORDER|PCIE_PROBE' /tmp/eeprom.txt"
+```
+Expected: `BOOT_ORDER=0xf416` y `PCIE_PROBE=1`.
+
+- [ ] **Step 4: Poner el sistema en el SSD**
+
+Dos caminos; el primero es más limpio y es el recomendado:
+
+*Camino A, instalación nueva en el SSD (preferido).* Con el SSD en un adaptador USB-M.2 conectado al PC de Felipe: escribir con Raspberry Pi Imager la misma imagen **Ubuntu Server 26.04 LTS (64-bit)** que ya se usó, con la misma personalización (hostname `cabeza`, usuario `coramo`, contraseña `coramo123`, SSH con la llave pública de `~/.ssh/id_ed25519.pub`, sin WiFi). Devolver el SSD al shield y **retirar la microSD** para la primera prueba.
+
+*Camino B, clonar la microSD al SSD desde la propia Pi.* Sirve si no hay adaptador USB-M.2 y ya hay configuración hecha sobre la microSD:
+
+```bash
+ssh coramo@<ip-cabeza> "echo coramo123 | sudo -S -p '' apt-get install -y -qq rsync parted && git clone -q https://github.com/geerlingguy/rpi-clone.git /tmp/rpi-clone && echo coramo123 | sudo -S -p '' cp /tmp/rpi-clone/rpi-clone /tmp/rpi-clone/rpi-clone-setup /usr/local/sbin/ && lsblk -o NAME,SIZE,TYPE | grep nvme"
+ssh -t coramo@<ip-cabeza> "sudo rpi-clone nvme0n1"   # pide confirmación y borra el SSD
+```
+Expected: `rpi-clone` termina con las dos particiones copiadas. **Borra todo el contenido del SSD**: confirmar antes que no hay nada que conservar.
+
+- [ ] **Step 5: Reiniciar sin microSD y comprobar que arrancó del SSD**
+
+```bash
+ssh coramo@<ip-cabeza> 'findmnt -n -o SOURCE /; lsblk -o NAME,SIZE,MOUNTPOINTS | head -6; echo "lectura secuencial:"; sudo hdparm -t /dev/nvme0n1 2>/dev/null | tail -1'
+```
+Expected: la raíz montada en `/dev/nvme0n1p2` (no `mmcblk0p2`). La lectura debería dar varios cientos de MB/s contra unas decenas de la microSD. Si la Pi no arranca sin microSD: volver a insertarla (el `1` de `0xf416` la deja como alternativa), revisar que el SSD sea el único dispositivo del shield y repetir el paso 1.
+
+#### 11.B Red, cámaras y ROS
+
+- [ ] **Step 6: IP fija y verificación de las dos cámaras**
+
+```bash
+ssh coramo@<ip-cabeza> "nmcli -t -f NAME,TYPE,DEVICE con show --active; echo coramo123 | sudo -S -p '' apt-get install -y -qq libcamera-tools chrony && cam -l"
+```
+Expected: `cam -l` lista **2** cámaras. Si lista 1 o 0: añadir a `/boot/firmware/config.txt` las líneas de `head/config.txt.snippet` con el sensor real (`imx219` para Camera Module v2, `imx708` para v3, `imx477` para HQ) y reiniciar. Fijar la IP con `nmcli con mod <conexión> ipv4.method manual ipv4.addresses 192.168.1.91/24 ipv4.gateway 192.168.1.1 ipv4.dns 192.168.1.1` y reservarla en el router.
+
+- [ ] **Step 7: ROS 2 Lyrical y sincronía de reloj**
+
+```bash
+scp -r ~/coramo/head coramo@192.168.1.91:~/coramo/
+ssh coramo@192.168.1.91 "echo coramo123 | sudo -S -p '' apt-get install -y -qq software-properties-common curl && echo coramo123 | sudo -S -p '' add-apt-repository -y universe >/dev/null && V=\$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F tag_name | awk -F'\"' '{print \$4}') && curl -sL -o /tmp/ros2-apt-source.deb \"https://github.com/ros-infrastructure/ros-apt-source/releases/download/\${V}/ros2-apt-source_\${V}.\$(. /etc/os-release && echo \$VERSION_CODENAME)_all.deb\" && echo coramo123 | sudo -S -p '' dpkg -i /tmp/ros2-apt-source.deb && echo coramo123 | sudo -S -p '' apt-get update -qq && echo coramo123 | sudo -S -p '' apt-get install -y -qq ros-lyrical-ros-base ros-lyrical-rmw-fastrtps-cpp ros-lyrical-camera-ros ros-lyrical-compressed-image-transport"
+ssh coramo@192.168.1.91 "printf 'server 192.168.1.103 iburst prefer\n' > /tmp/coramo.tmp && echo coramo123 | sudo -S -p '' sh -c 'cat /tmp/coramo.tmp >> /etc/chrony/chrony.conf' && rm -f /tmp/coramo.tmp && echo coramo123 | sudo -S -p '' systemctl restart chrony && sleep 5 && chronyc tracking | grep -E 'Reference ID|System time'"
+```
+Expected: `Reference ID` apuntando al Xeon y `System time` con error de milisegundos. En el Xeon, `chrony` debe aceptar clientes (`allow 192.168.1.0/24` en `/etc/chrony/chrony.conf` y reinicio del servicio).
+
+- [ ] **Step 8: Servicio de cámaras y prueba de 10 minutos desde el Xeon**
 
 ```bash
 ssh coramo@192.168.1.91 "echo coramo123 | sudo -S -p '' cp ~/coramo/head/head-cameras.service /etc/systemd/system/ && echo coramo123 | sudo -S -p '' systemctl daemon-reload && echo coramo123 | sudo -S -p '' systemctl enable --now head-cameras && sleep 8 && systemctl is-active head-cameras"
 ssh coramo "bash -lc 'ros2 topic list | grep head; timeout 600 ros2 topic hz /head/cam_left/image_raw/compressed 2>&1 | tail -3'"
 ```
-Expected: `active`; la lista muestra `/head/cam_left/image_raw/compressed` y `/head/cam_right/...`; tras 10 min, `average rate: 15.0xx` con `min` no menor de 12 Hz y sin cortes. Guardar la salida en `docs/mediciones/` en la Task 12.
+Expected: `active`; la lista muestra las dos cámaras; tras 10 min, `average rate: 15.0xx` sin cortes. Guardar la salida en `docs/mediciones/`.
 
-- [ ] **Step 6: Documentar y commit**
+- [ ] **Step 9: Documentar y commit**
 
 ```bash
 cat > ~/coramo/docs/instalacion/cabeza.md <<'EOT'
 # Instalación de la cabeza (RPi5)
-- Imagen: Ubuntu Server 26.04 LTS 64-bit (Raspberry Pi Imager), hostname cabeza, usuario coramo, SSH por llave.
-- Hardware retirado: X1011, RX 580 y kernel Coreforge de v1. Cámaras CSI x2 (modelo: anotar).
+- Imagen: Ubuntu Server 26.04 LTS 64-bit, hostname cabeza, usuario coramo, SSH por llave.
+- Hardware retirado de v1: RX 580 y kernel Coreforge. Shield M.2 con SSD NVMe (modelo: anotar). Cámaras CSI x2 (modelo: anotar).
+- Arranque desde el SSD: BOOT_ORDER=0xf416, PCIE_PROBE=1, dtparam=pciex1. Raíz en /dev/nvme0n1p2. Lectura medida: (anotar MB/s).
 - Red: eth0 fija 192.168.1.91/24, gw 192.168.1.1. Reserva DHCP en el router.
 - Cámaras: `cam -l` lista 2. Overlays extra en config.txt: (sí/no).
-- ROS 2 Lyrical base + camera_ros + compressed-image-transport. Env: RMW fastrtps, ROS_DISCOVERY_SERVER=192.168.1.90:11811, ROS_DOMAIN_ID=7.
-- chrony contra 192.168.1.90.
+- ROS 2 Lyrical base + camera_ros + compressed-image-transport. Env: RMW fastrtps, ROS_DISCOVERY_SERVER=<IP del Xeon>:11811, ROS_DOMAIN_ID=7.
+- chrony contra el Xeon.
 - Servicio head-cameras.service → /head/cam_left y /head/cam_right a 640x480, 15 FPS.
 EOT
-cd ~/coramo && git add docs && git -c user.name="Felipe Ballesteros" -c user.email="felipe1024@gmail.com" commit -q -m "docs(cabeza): instalación de la RPi5 como nodo cabeza" && echo ok
+cd ~/coramo && git add docs && git commit -m "docs(cabeza): instalación de la RPi5 como nodo cabeza"
 ```
-
----
 
 ### Task 12: Bitácora de mediciones y tabla de decisión de backends
 
