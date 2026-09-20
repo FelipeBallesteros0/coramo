@@ -149,6 +149,11 @@ por visión con agarre de objetos, control de impedancia.
   Realtek RTL8153 gigabit** (reconocido, sin cable). El servidor va por cable
   en el RTL8153; el WiFi queda de respaldo con el ahorro de energía apagado
   (fix de v1).
+- Energía: el servidor **nunca se suspende** (sleep, suspend, hibernate e
+  hybrid-sleep enmascarados en systemd; GNOME y GDM sin suspensión automática) y
+  **ningún ahorro de energía toca la red**: WiFi con powersave apagado y
+  adaptadores USB de red sin autosuspend (regla udev heredada de v1).
+- Pantalla: **el monitor se conecta siempre por la RX 580**, nunca por la 4070.
 - Conexión al cuerpo: **USB** al Pico. El Pico no usa WiFi en v2.
 
 ### 4.2 Cabeza: Raspberry Pi 5 de v1
@@ -529,7 +534,7 @@ corriente resulta insuficiente, se reabre la decisión con datos.
 
 | Hito | Contenido | Criterio de aceptación |
 |---|---|---|
-| **0 — Servidor listo** | Xeon verificado: Ubuntu 26.04, driver NVIDIA (ya instalado) y CUDA por pip, RX 580 como pantalla, red por cable (RTL8153), ROS 2 Lyrical Luth, Discovery Server, fuente. Servidores de modelo en entornos `uv` con Python 3.12. RPi5 reinstalada como cabeza con 26.04 + Lyrical. Modelos locales descargados y claves de API configuradas. Benchmark local vs nube por etapa. | Tabla de latencia por backend (STT, LLM, TTS, p50 y p95 de 30 peticiones) y FPS del detector, medidos. Tabla de decisión de backends. Cámaras visibles desde el Xeon. |
+| **0 — Servidor listo** | Xeon verificado: Ubuntu 26.04, driver NVIDIA (ya instalado) y CUDA por pip, monitor por la RX 580, sin suspensión ni ahorro de energía en red, red por cable (RTL8153), ROS 2 Lyrical Luth, Discovery Server, fuente. Servidores de modelo en entornos `uv` con Python 3.12. RPi5 reinstalada como cabeza con 26.04 + Lyrical. Modelos locales descargados y claves de API configuradas. Benchmark local vs nube por etapa. | Tabla de latencia por backend (STT, LLM, TTS, p50 y p95 de 30 peticiones) y FPS del detector, medidos. Tabla de decisión de backends. Cámaras visibles desde el Xeon. |
 | **A — Cerebro** | Paquetes `coramo_brain`, `coramo_msgs`, `coramo_bringup`; `body_bridge` simulado. | "coramo, cierra la mano" → `/body/command_safe` en ≤ 1,5 s desde fin de habla, medido. Conversación básica. Tests verdes sin robot. |
 | **B — Cuerpo (mano primero)** | Protocolo v2, firmware Pico C++, `body_bridge` real, `safety`. | Mano y cabeza comandadas desde ROS con telemetría en Foxglove. Watchdog y parada verificados. |
 | **D básico** | Nodo cabeza, detector, `look_at`, saludo. | El robot detecta a una persona, la mira, la saluda y ejecuta una orden de mano. |

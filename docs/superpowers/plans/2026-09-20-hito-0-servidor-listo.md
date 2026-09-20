@@ -14,7 +14,8 @@
 
 - SO en ambas máquinas: **Ubuntu 26.04** (Resolute). ROS 2: **Lyrical Luth** (`ros-lyrical-*`). No se reinstala el Xeon.
 - El Xeon no tiene AVX2: **ninguna inferencia en CPU**; todo modelo local corre en la RTX 4070 SUPER (`device=cuda:0`).
-- La RX 580 es solo pantalla. Al terminar el hito, `nvidia-smi` no debe mostrar `gnome-shell` ni `Xwayland` en la 4070.
+- La RX 580 es solo pantalla: **el monitor se conecta siempre al HDMI de la RX 580**, nunca a la 4070. Al terminar el hito, `nvidia-smi` no debe mostrar `gnome-shell` ni `Xwayland` en la 4070.
+- El servidor **nunca se suspende** (targets de sleep enmascarados) y **ningún ahorro de energía** toca la red: WiFi con powersave off y adaptadores USB de red sin autosuspend.
 - Python del sistema (3.14) no se toca. Cada servidor de modelo vive en `~/venvs/<nombre>` creado con `uv venv --python 3.12`.
 - Direcciones fijas: Xeon por cable **192.168.1.90/24**, cabeza RPi5 **192.168.1.91/24**, router 192.168.1.1. Discovery Server en `192.168.1.90:11811`.
 - Nombres de tools del benchmark = los del spec §6.2: `mano`, `brazo`, `cabeza`, `responder`, `detener`.
@@ -86,7 +87,7 @@ ssh coramo 'cd ~/coramo && git add docs tools && git -c user.name="Felipe Balles
 
 ---
 
-### Task 1: Pantalla en la RX 580, 4070 libre
+### Task 1: La pantalla se conecta siempre por la RX 580; la 4070 queda libre
 
 **Files:**
 - Modify: `docs/instalacion/xeon.md` (sección "Pantalla")
@@ -119,6 +120,69 @@ ssh coramo 'cat >> ~/coramo/docs/instalacion/xeon.md <<EOT
 Monitor en el HDMI de la RX 580 (card0, vendor 0x1002). nvidia-smi sin gnome-shell ni Xwayland. Ajuste de BIOS aplicado: (sí/no, anotar).
 EOT
 cd ~/coramo && git add docs && git -c user.name="Felipe Ballesteros" -c user.email="felipe1024@gmail.com" commit -m "docs(xeon): monitor en la RX 580, 4070 libre"'
+```
+
+---
+
+### Task 1b: El servidor nunca duerme (sin suspensión, sin ahorro de energía en red)
+
+Estado medido el 2026-09-20: GNOME del usuario `coramo` ya tiene `sleep-inactive-ac-type = 'nothing'` e `idle-delay = 0`; los adaptadores USB de red ya están con `power/control = on`; pero los targets de suspensión de systemd están activos (`static`), GDM puede pedir suspensión desde la pantalla de login, y el WiFi tiene `Power save: on`.
+
+**Files:**
+- Create (Xeon): `/etc/udev/rules.d/70-usb-power.rules`, `/etc/NetworkManager/conf.d/wifi-powersave-off.conf`
+- Modify: `docs/instalacion/xeon.md` (sección "Energía")
+
+**Interfaces:**
+- Produces: `systemctl is-enabled sleep.target suspend.target hibernate.target hybrid-sleep.target` → `masked` ×4; `iw dev wlx90de80052ea8 get power_save` → `off`; ping por WiFi < 30 ms. La Task 2 reutiliza el archivo de NetworkManager creado aquí.
+
+- [ ] **Step 1: Enmascarar la suspensión en systemd (bloquea cualquier petición, venga de GNOME, de GDM o de un comando)**
+
+```bash
+ssh coramo "echo coramo123 | sudo -S -p '' systemctl mask sleep.target suspend.target hibernate.target hybrid-sleep.target >/dev/null 2>&1; systemctl is-enabled sleep.target suspend.target hibernate.target hybrid-sleep.target | tr '\n' ' '"
+```
+Expected: `masked masked masked masked`.
+
+- [ ] **Step 2: GNOME del usuario y pantalla de login de GDM sin suspensión automática**
+
+```bash
+ssh coramo "export DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus; gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing'; gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-battery-type 'nothing'; gsettings set org.gnome.desktop.session idle-delay 0; gsettings get org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type; echo coramo123 | sudo -S -p '' -u gdm dbus-run-session -- gsettings set org.gnome.settings-daemon.plugins.power sleep-inactive-ac-type 'nothing' 2>/dev/null && echo 'gdm ok' || echo 'gdm: no se pudo (systemd enmascarado ya lo cubre)'"
+```
+Expected: `'nothing'` y `gdm ok` (si sale el aviso alternativo, no importa: el paso 1 impide suspender igual).
+
+- [ ] **Step 3: Regla udev para que los adaptadores USB de red nunca entren en autosuspend (heredada de v1, `docs/legado/01-red.md`)**
+
+```bash
+ssh coramo "printf 'ACTION==\"add\", SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"0e8d\", ATTRS{idProduct}==\"7961\", ATTR{power/control}=\"on\"\nACTION==\"add\", SUBSYSTEM==\"usb\", ATTRS{idVendor}==\"0bda\", ATTRS{idProduct}==\"8153\", ATTR{power/control}=\"on\"\n' | sudo -S -p '' tee /etc/udev/rules.d/70-usb-power.rules >/dev/null <<< coramo123; echo coramo123 | sudo -S -p '' udevadm control --reload; echo coramo123 | sudo -S -p '' udevadm trigger --subsystem-match=usb; sleep 2; for d in /sys/bus/usb/devices/*; do v=\$(cat \$d/idVendor 2>/dev/null); p=\$(cat \$d/idProduct 2>/dev/null); case \"\$v:\$p\" in 0e8d:7961|0bda:8153) echo \"\$v:\$p control=\$(cat \$d/power/control)\";; esac; done"
+```
+Expected: `0e8d:7961 control=on` y `0bda:8153 control=on` (hoy ya están en `on`; la regla lo fija tras cada reinicio o reconexión).
+
+- [ ] **Step 4: WiFi sin ahorro de energía (NetworkManager)**
+
+```bash
+ssh coramo "printf '[connection]\nwifi.powersave = 2\n' | sudo -S -p '' tee /etc/NetworkManager/conf.d/wifi-powersave-off.conf >/dev/null <<< coramo123; echo coramo123 | sudo -S -p '' systemctl restart NetworkManager; sleep 6; iw dev wlx90de80052ea8 get power_save"
+ping -c 5 192.168.1.103 | tail -1
+```
+Expected: `Power save: off` y `rtt min/avg/max` con avg `< 30 ms` (hoy: 121 ms). El SSH se corta unos segundos durante el reinicio de NetworkManager; reintentar si el primer comando devuelve error de conexión.
+
+- [ ] **Step 5: Prueba de 30 minutos sin tocar el equipo**
+
+```bash
+sleep 1800; ssh coramo 'uptime; journalctl -b --no-pager | grep -ciE "entering sleep|suspend entry"'
+```
+Expected: `uptime` sigue creciendo, SSH responde a la primera y el conteo es `0`.
+
+- [ ] **Step 6: Documentar y commit**
+
+```bash
+ssh coramo 'cat >> ~/coramo/docs/instalacion/xeon.md <<EOT
+
+## Energía
+- systemd: sleep/suspend/hibernate/hybrid-sleep enmascarados. GNOME (usuario y GDM): sin suspensión automática, idle-delay 0.
+- udev 70-usb-power.rules: adaptadores USB de red (MediaTek 0e8d:7961, Realtek 0bda:8153) con power/control=on.
+- WiFi: powersave off por /etc/NetworkManager/conf.d/wifi-powersave-off.conf (ping bajó de 121 ms a X ms).
+- Prueba de 30 min sin suspensión: OK.
+EOT
+cd ~/coramo && git add docs && git -c user.name="Felipe Ballesteros" -c user.email="felipe1024@gmail.com" commit -m "docs(xeon): sin suspensión ni ahorro de energía en red"'
 ```
 
 ---
@@ -157,13 +221,13 @@ ssh coramo 'ip route | grep default'
 ```
 Expected: la ruta por defecto sale por `enxf8ce21123f7b` con `metric 100` (el WiFi tiene 600 y queda de respaldo).
 
-- [ ] **Step 5: Apagar el ahorro de energía del WiFi**
+- [ ] **Step 5: Confirmar que el WiFi sigue sin ahorro de energía (lo fijó la Task 1b)**
 
 ```bash
-ssh coramo "printf '[connection]\nwifi.powersave = 2\n' | sudo -S -p '' tee /etc/NetworkManager/conf.d/wifi-powersave-off.conf >/dev/null <<< coramo123; echo coramo123 | sudo -S -p '' systemctl restart NetworkManager; sleep 5; iw dev wlx90de80052ea8 get power_save"
+ssh coramo 'iw dev wlx90de80052ea8 get power_save'
 ping -c 3 192.168.1.103
 ```
-Expected: `Power save: off` y ping por WiFi `< 30 ms` (antes eran 121 ms).
+Expected: `Power save: off` y ping por WiFi `< 30 ms`. Si volvió a `on`, repetir el paso 4 de la Task 1b.
 
 - [ ] **Step 6: Reservar las IPs en el router** (Felipe, en la interfaz del router 192.168.1.1): reservar `192.168.1.90` para la MAC del RTL8153 (`ssh coramo 'cat /sys/class/net/enxf8ce21123f7b/address'`) y `192.168.1.91` para la RPi5 (se obtiene en la Task 10). Evita colisiones con el DHCP.
 
@@ -898,7 +962,7 @@ Expected: GitHub muestra `main` con README nuevo, `docs/legado/`, y la rama `v1-
 
 ## Self-review (hecho al escribir el plan)
 
-- **Cobertura del spec, hito 0:** Ubuntu 26.04 (T0), driver NVIDIA y CUDA por pip (T3), RX 580 como pantalla (T1), red por cable RTL8153 (T2), fuente (T4), ROS 2 Lyrical + Discovery Server (T10), servidores de modelo en uv 3.12 (T5–T7 crean los venvs; los servidores HTTP propios de STT/TTS son del subproyecto A), RPi5 cabeza con 26.04 + Lyrical (T11), tabla de latencia por backend p50/p95 de 30 peticiones (T5–T8, T12), FPS del detector (T9), cámaras visibles desde el Xeon con `hz` de 10 min (T11), tabla de decisión (T12).
+- **Cobertura del spec, hito 0:** Ubuntu 26.04 (T0), driver NVIDIA y CUDA por pip (T3), RX 580 como pantalla (T1), sin suspensión ni ahorro de energía en red (T1b), red por cable RTL8153 (T2), fuente (T4), ROS 2 Lyrical + Discovery Server (T10), servidores de modelo en uv 3.12 (T5–T7 crean los venvs; los servidores HTTP propios de STT/TTS son del subproyecto A), RPi5 cabeza con 26.04 + Lyrical (T11), tabla de latencia por backend p50/p95 de 30 peticiones (T5–T8, T12), FPS del detector (T9), cámaras visibles desde el Xeon con `hz` de 10 min (T11), tabla de decisión (T12).
 - **Fuera del hito 0, a propósito:** grabar voces reales (spec §6.4, subproyecto A), nodos ROS del cerebro, protocolo del Pico.
 - **Consistencia:** `comun.cargar_ordenes/medir/imprimir` se definen en T5 y se usan en T6, T7, T8; `tools_coramo.json` se define en T7 y se usa en T8; IPs 192.168.1.90/.91 y `ROS_DOMAIN_ID=7` iguales en T2, T10, T11.
 - **Riesgos abiertos que el plan no puede resolver por adelantado:** nombre exacto del paquete CUDA en el archivo de 26.04 (T3 trae alternativa), modelo de las cámaras CSI (T11 paso 2 y snippet), existencia de `--chat-template-kwargs` en la versión de llama.cpp clonada (T7 trae alternativa), y si `claude-sonnet-5` acepta `thinking disabled` con el effort por defecto (T8 trae alternativa).
