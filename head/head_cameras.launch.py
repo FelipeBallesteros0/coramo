@@ -14,8 +14,8 @@ def camara(nombre, camera_id):
     return Node(
         package="camera_ros",
         executable="camera_node",
-        namespace=f"/head/{nombre}",
-        name="camera",
+        namespace="/head",
+        name=nombre,
         parameters=[{
             "camera": camera_id,
             "width": 640,
