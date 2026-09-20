@@ -294,7 +294,7 @@ La elección se hace con benchmark en la tarea cero, no por preferencia.
 | Etapa | Local (4070) | Nube (candidatos) | Regla de elección |
 |---|---|---|---|
 | STT | faster-whisper large-v3-turbo, 0,12 s medido en el traductor | Transcripción de OpenAI (ya usada en el repo InMoov y en el bot de WhatsApp) o un servicio de streaming | Menor latencia fin de habla → texto con WER ≤ 10 % |
-| LLM | Qwen3-8B Q5 en llama-server | Claude Haiku 4.5 (`claude-haiku-4-5`, US$ 1 / 5 por millón de tokens de entrada / salida) o Claude Sonnet 5 (`claude-sonnet-5`, US$ 2 / 10); OpenAI o DeepSeek como alternativas ya usadas | Mejor acierto de tool con latencia ≤ 0,5 s. En la nube: `tool_choice` forzado a una tool, sin thinking, system prompt con cache |
+| LLM | Qwen3-8B Q5 en llama-server | **OpenAI (ChatGPT) o DeepSeek**, los que Felipe ya usa en el bot de WhatsApp (decisión 2026-09-20; Claude descartado como candidato) | Mejor acierto de tool con latencia ≤ 0,5 s. En la nube: `tool_choice` forzado a una tool, razonamiento al mínimo, system prompt estable para cache |
 | TTS | Kokoro, 0,19 s medido | TTS de OpenAI en streaming, ElevenLabs o Fish Audio (ya probado) | Menor tiempo al primer audio con voz española aceptable |
 | Visión | Detector local, siempre | ninguno | 15 FPS continuos no se mandan a la nube |
 
@@ -312,8 +312,9 @@ Reglas fijas, independientes del backend:
 - La cadena de seguridad (watchdog, botón, límites en el Pico) no depende de
   la red. El "detente" por voz hereda la latencia del STT en uso; el botón
   físico es la parada primaria.
-- Costo por orden con el system prompt en cache: menos de un centavo de dólar
-  con Haiku 4.5 o Sonnet 5. Se mide y se registra en `docs/mediciones/`.
+- Costo por orden con el system prompt en cache: del orden de una fracción de
+  centavo de dólar con los modelos económicos de OpenAI o DeepSeek. Se mide con
+  los precios vigentes y se registra en `docs/mediciones/`.
 
 ---
 
@@ -334,7 +335,7 @@ Reglas fijas, independientes del backend:
    **excepto en modo cara a cara**: si `/vision/people` reporta una persona a
    menos de ~2 m mirando al robot, no se exige la palabra.
 5. `agent`: backend según perfil (llama-server con Qwen3-8B y `--jinja`, o
-   Claude Haiku 4.5 / Sonnet 5 por API). Siempre una tool obligatoria por
+   OpenAI / DeepSeek por API). Siempre una tool obligatoria por
    turno, temperatura 0, historial corto (últimos 6 turnos), system prompt con
    identidad y reglas, y cache del system prompt (KV local o prompt caching
    en la nube).
@@ -618,7 +619,7 @@ números. Eso es directamente material de la tesis.
 | Dependencia de red en demos y ferias | Respaldo local automático; hotspot del teléfono como segunda red; la demo de la tesis se ensaya en ambos modos. |
 | Costo acumulado de API | Cache del system prompt; costo por orden medido en la tarea cero; tope de gasto mensual en la cuenta. |
 | Privacidad del audio en la nube | Solo se envía el segmento del turno, nunca audio continuo ni video; se declara en la tesis. |
-| Modelos que no admiten `tool_choice` forzado (familia Claude Fable) | Usar Sonnet 5 o Haiku 4.5, o `auto` con instrucción explícita y validación del JSON antes de ejecutar. |
+| Modelos de razonamiento que añaden latencia (gpt-5.x, deepseek-reasoner) | Medir con razonamiento al mínimo (`reasoning_effort`) o usar el modelo de chat sin razonamiento; validar el JSON de la tool antes de ejecutar. |
 
 ---
 

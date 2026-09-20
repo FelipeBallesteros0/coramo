@@ -687,7 +687,7 @@ ssh coramo 'cd ~/coramo && git add tools && git -c user.name="Felipe Ballesteros
 
 ---
 
-### Task 8: Backends en nube (STT y TTS de OpenAI; Claude Haiku 4.5 y Sonnet 5)
+### Task 8: Backends en nube (STT y TTS de OpenAI; LLM de OpenAI y DeepSeek)
 
 **Files:**
 - Create: `~/.config/coramo/env` (Xeon, fuera del repo), `tools/bench/bench_nube.py`
@@ -701,7 +701,8 @@ ssh coramo 'cd ~/coramo && git add tools && git -c user.name="Felipe Ballesteros
 ```bash
 ssh coramo 'mkdir -p ~/.config/coramo && chmod 700 ~/.config/coramo && cat > ~/.config/coramo/env <<EOT
 export OPENAI_API_KEY=sk-...
-export ANTHROPIC_API_KEY=sk-ant-...
+export DEEPSEEK_API_KEY=sk-...
+export OPENAI_CHAT_MODELS=gpt-5.5
 EOT
 chmod 600 ~/.config/coramo/env && ls -la ~/.config/coramo/env'
 ```
@@ -769,7 +770,7 @@ echo listo'
 ```bash
 ssh coramo 'source ~/.config/coramo/env && ~/venvs/bench/bin/python ~/coramo/tools/bench/bench_nube.py'
 ```
-Expected: cuatro líneas de resultado. Referencias para juzgar: STT nube p50 típicamente 0,5 a 1,5 s (local: 0,1x); TTS nube primer byte 0,3 a 0,8 s (local: 0,2x); Claude p50 0,5 a 1,2 s con acierto ≥ 28/30. Costo por orden con Haiku 4.5 = (in×1 + out×5)/1e6 USD; con Sonnet 5 = (in×2 + out×10)/1e6 USD, con lectura de cache más barata. Si `claude-sonnet-5` rechaza `thinking disabled`, repetir con `{"output_config": {"effort": "low"}}` en vez de `thinking`.
+Expected: cuatro líneas de resultado. Referencias para juzgar: STT nube p50 típicamente 0,5 a 1,5 s (local: 0,16); TTS nube primer byte 0,3 a 0,8 s (local: 0,13); LLM en nube p50 0,5 a 1,5 s con acierto ≥ 28/30. Decisión de Felipe (2026-09-20): el LLM en nube se elige entre **OpenAI (ChatGPT) y DeepSeek**, no Claude. Modelos de OpenAI a medir en `OPENAI_CHAT_MODELS` (coma-separados; el repo InMoov usa `gpt-5.5`); DeepSeek `deepseek-chat` si hay `DEEPSEEK_API_KEY`. Costo por orden = tokens × precio vigente del proveedor (anotar el precio consultado ese día).
 
 - [ ] **Step 4: Commit (sin claves)**
 
