@@ -144,7 +144,9 @@ por visión con agarre de objetos, control de impedancia.
   Xeon (jack rosado trasero y salida verde; conectados el 2026-09-20 y
   verificados con prueba acústica), no en la cabeza, para mantener la latencia
   de voz en una sola máquina. Ganancia calibrada por PipeWire (fuente 0,35,
-  `Rear Mic Boost` en 0 dB: con boost el fondo satura). Se puede mover a la
+  `Rear Mic Boost` en 0 dB: con boost el fondo satura). Medido: voz a 30 cm
+  −34 dBFS sobre un fondo de −48 dBFS, SNR de 14 dB, **insuficiente**; primera
+  alternativa a probar, el adaptador USB PCM2902 de v1 (plan del hito 0, tarea 1c). Se puede mover a la
   cabeza o a USB en una versión posterior si la distancia lo exige.
 - Red: la placa **no expone ninguna controladora Ethernet PCI** (no aparece en
   `lspci`). Hay dos adaptadores USB heredados de v1: WiFi MediaTek MT7921U (hoy
@@ -317,8 +319,10 @@ Reglas fijas, independientes del backend:
 
 ### 6.1 Pipeline
 
-1. `audio`: captura continua, 16 kHz mono, chunks de 32 ms, compuerta de nivel
-   (−45 dBFS RMS, del traductor) para no alimentar ruido de sala.
+1. `audio`: captura continua, 16 kHz mono, chunks de 32 ms, ganancia por
+   software configurable y compuerta de nivel **relativa al fondo medido** (fondo
+   + 6 dB; el traductor usaba −45 dBFS fijo, pero el micrófono actual entrega la
+   voz a −34 dBFS) para no alimentar ruido de sala.
 2. `vad`: Silero VAD en CPU. Fin de turno tras 600 ms de silencio (ajustable),
    tope de 15 s. Publica el segmento completo con marcas de inicio y fin.
 3. `stt`: backend según perfil (local faster-whisper large-v3-turbo con

@@ -223,7 +223,12 @@ v=[math.sqrt(sum(x*x for x in s[i:i+fr//2])/(fr//2)) for i in range(0,len(s)-fr/
 print(f"ventana mas fuerte {db(max(v)):.1f} dBFS | mas debil {db(min(v)):.1f} dBFS | pico {db(max(abs(x) for x in s)):.1f} dBFS")
 PY'
 ```
-Expected: ventana más fuerte entre −30 y −15 dBFS, pico por debajo de −3 dBFS (sin recorte), ventana más débil cerca del ambiente. Si la voz queda bajo −35 dBFS, subir la fuente a 0,45 y repetir; nunca activar el boost.
+Expected: criterio principal **relación señal a ruido (voz − fondo) ≥ 20 dB** y pico por debajo de −3 dBFS (sin recorte); el nivel absoluto se corrige por software en el nodo `audio` del subproyecto A, la SNR no.
+
+Medido el 2026-09-20 con el micrófono analógico actual (Rear Mic, boost 0 dB, fuente 0,35): voz a 1 m −36 dBFS y a 30 cm −34 dBFS, fondo −46 a −49 dBFS, pico −19 dBFS, sin recortes → **SNR de solo 10 a 14 dB**, insuficiente para el criterio. La distancia casi no cambió el resultado, señal de un micrófono poco sensible. Subir el boost no sirve: con +10 dB el fondo pasa a −15 dBFS (agrega ruido, no señal). Acciones, en este orden:
+1. Probar el mismo micrófono en el adaptador USB **PCM2902** heredado de v1 (tiene su propio preamplificador y ADC): conectar, verificar que aparece en `arecord -l` como `USB Audio`, hacerlo fuente predeterminada con `wpctl set-default <id>` y repetir los pasos 2 y 3.
+2. Si sigue bajo 20 dB de SNR, cambiar el micrófono por uno USB con procesamiento propio (tipo conferencia) o acercarlo a la boca del interlocutor en el diseño de la cabeza.
+3. Mientras tanto, la compuerta de nivel del nodo `audio` (spec §6.1) se define **relativa al fondo medido** (fondo + 6 dB), no fija en −45 dBFS, o bloquearía la voz.
 
 - [ ] **Step 4: Reiniciar y comprobar que los volúmenes persisten**
 
