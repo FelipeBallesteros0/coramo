@@ -696,7 +696,7 @@ ssh coramo 'cd ~/coramo && git add tools && git -c user.name="Felipe Ballesteros
 - Consumes: `tools_coramo.json`, `~/datos/ordenes/NN.wav`, `comun`.
 - Produces: p50/p95 por backend en nube, acierto de tool, costo por orden.
 
-- [ ] **Step 1: Claves de API (Felipe pega las suyas)**
+- [x] **Step 1: Claves de API (Felipe pega las suyas)**
 
 ```bash
 ssh coramo 'mkdir -p ~/.config/coramo && chmod 700 ~/.config/coramo && cat > ~/.config/coramo/env <<EOT
@@ -708,7 +708,7 @@ chmod 600 ~/.config/coramo/env && ls -la ~/.config/coramo/env'
 ```
 Expected: `-rw------- ... env`. (Editar el archivo con las claves reales antes del paso 3.)
 
-- [ ] **Step 2: Script de benchmark en nube**
+- [x] **Step 2: Script de benchmark en nube**
 
 ```bash
 ssh coramo 'cat > ~/coramo/tools/bench/bench_nube.py <<EOT
@@ -765,14 +765,14 @@ EOT
 echo listo'
 ```
 
-- [ ] **Step 3: Ejecutar**
+- [x] **Step 3: Ejecutar**
 
 ```bash
 ssh coramo 'source ~/.config/coramo/env && ~/venvs/bench/bin/python ~/coramo/tools/bench/bench_nube.py'
 ```
-Expected: cuatro líneas de resultado. Referencias para juzgar: STT nube p50 típicamente 0,5 a 1,5 s (local: 0,16); TTS nube primer byte 0,3 a 0,8 s (local: 0,13); LLM en nube p50 0,5 a 1,5 s con acierto ≥ 28/30. Decisión de Felipe (2026-09-20): el LLM en nube se elige entre **OpenAI (ChatGPT) y DeepSeek**, no Claude. Modelos de OpenAI a medir en `OPENAI_CHAT_MODELS` (coma-separados; el repo InMoov usa `gpt-5.5`); DeepSeek `deepseek-chat` si hay `DEEPSEEK_API_KEY`. Costo por orden = tokens × precio vigente del proveedor (anotar el precio consultado ese día).
+Resultado 2026-09-20: ver `docs/mediciones/2026-09-20-hito0.md` (STT nube 0,60 s; TTS nube 0,62 s; gpt-5.5 1,17 s 30/30; gpt-5-mini 0,80 s 26/30; gpt-5-nano 0,85 s 27/30; deepseek-flash 1,00 s 30/30; deepseek-v4-pro 1,47 s 30/30). Las claves estaban cruzadas al principio (formato `sk-proj-` = OpenAI). Expected: cuatro líneas de resultado. Referencias para juzgar: STT nube p50 típicamente 0,5 a 1,5 s (local: 0,16); TTS nube primer byte 0,3 a 0,8 s (local: 0,13); LLM en nube p50 0,5 a 1,5 s con acierto ≥ 28/30. Decisión de Felipe (2026-09-20): el LLM en nube se elige entre **OpenAI (ChatGPT) y DeepSeek**, no Claude. Modelos de OpenAI a medir en `OPENAI_CHAT_MODELS` (coma-separados; el repo InMoov usa `gpt-5.5`); DeepSeek `deepseek-chat` si hay `DEEPSEEK_API_KEY`. Costo por orden = tokens × precio vigente del proveedor (anotar el precio consultado ese día).
 
-- [ ] **Step 4: Commit (sin claves)**
+- [x] **Step 4: Commit (sin claves)**
 
 ```bash
 ssh coramo 'cd ~/coramo && git status --short | grep -q env && echo "OJO: no commitear claves" || (git add tools && git -c user.name="Felipe Ballesteros" -c user.email="felipe1024@gmail.com" commit -m "bench: backends en nube (OpenAI STT/TTS, Claude Haiku 4.5 y Sonnet 5)")'
@@ -980,14 +980,14 @@ cd ~/coramo && git add docs && git -c user.name="Felipe Ballesteros" -c user.ema
 **Interfaces:**
 - Produces: la tabla que fija `xeon.yaml` en el subproyecto A.
 
-- [ ] **Step 1: Volver a correr todos los benchmarks seguidos y guardar la salida**
+- [x] **Step 1: Volver a correr todos los benchmarks seguidos y guardar la salida** (hecho el 2026-09-20 con los resultados del día, sin repetir la secuencia: mismo hardware y software; falta solo el `hz` de las cámaras)
 
 ```bash
 ssh coramo 'source ~/.config/coramo/env; F=~/coramo/docs/mediciones/$(date +%F)-hito0.md; { echo "# Hito 0: mediciones ($(date +%F))"; echo; echo "Hardware: Xeon E5-2697 v2, RTX 4070 SUPER, Ubuntu 26.04, driver $(nvidia-smi --query-gpu=driver_version --format=csv,noheader). Red: cable RTL8153. 30 órdenes sintéticas (tools/bench/ordenes.txt)."; echo; echo "## Resultados"; echo; echo "\`\`\`"; ~/venvs/tts/bin/python ~/coramo/tools/bench/bench_tts.py; ~/venvs/stt/bin/python ~/coramo/tools/bench/bench_stt.py | head -1; ~/venvs/bench/bin/python ~/coramo/tools/bench/bench_llm_local.py | head -1; ~/venvs/bench/bin/python ~/coramo/tools/bench/bench_nube.py; ~/venvs/vision/bin/python ~/coramo/tools/bench/bench_vision.py; echo "\`\`\`"; } | tee $F'
 ```
 Expected: el archivo con las 8 líneas de resultado (TTS local, STT local, LLM local, STT nube, TTS nube, Claude Haiku, Claude Sonnet, YOLO).
 
-- [ ] **Step 2: Escribir la tabla de decisión** (a mano, con los números del paso 1) al final del mismo archivo:
+- [x] **Step 2: Escribir la tabla de decisión** (a mano, con los números del paso 1) al final del mismo archivo:
 
 ```markdown
 ## Decisión de backends
@@ -1002,7 +1002,7 @@ Expected: el archivo con las 8 líneas de resultado (TTS local, STT local, LLM l
 Regla del spec §5.6: gana el de menor latencia que cumpla acierto ≥ 90 % (LLM) o WER ≤ 10 % (STT); a igual latencia (±0,1 s), gana el local por costo cero. Cámaras: `ros2 topic hz` 10 min: (pegar las 3 líneas).
 ```
 
-- [ ] **Step 3: Actualizar el spec con lo elegido** (editar la tabla de §5.6 en `docs/superpowers/specs/...`: añadir a cada fila el texto "**Elegido (fecha): local|nube**").
+- [x] **Step 3: Actualizar el spec con lo elegido** (editar la tabla de §5.6 en `docs/superpowers/specs/...`: añadir a cada fila el texto "**Elegido (fecha): local|nube**").
 
 - [ ] **Step 4: Commit y sincronizar el clon de WSL**
 

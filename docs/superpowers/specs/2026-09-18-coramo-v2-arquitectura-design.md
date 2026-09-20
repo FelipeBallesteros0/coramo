@@ -289,14 +289,14 @@ Un YAML por perfil en `coramo_bringup/params/`:
 Decisión de Felipe (2026-09-18): **lo que importa es la velocidad, no que todo
 sea local.** Cada etapa pesada (STT, LLM, TTS) es un backend intercambiable
 detrás de una interfaz única en `core/`, y el YAML del perfil elige cuál se usa.
-La elección se hace con benchmark en la tarea cero, no por preferencia.
+La elección se hace con benchmark en la tarea cero, no por preferencia. Resultado (2026-09-20, `docs/mediciones/2026-09-20-hito0.md`): en este servidor lo local gana en STT, LLM y TTS por 2 a 5×; la nube queda como respaldo de calidad del LLM y como opción si el Xeon no está disponible.
 
-| Etapa | Local (4070) | Nube (candidatos) | Regla de elección |
-|---|---|---|---|
-| STT | faster-whisper large-v3-turbo, 0,12 s medido en el traductor | Transcripción de OpenAI (ya usada en el repo InMoov y en el bot de WhatsApp) o un servicio de streaming | Menor latencia fin de habla → texto con WER ≤ 10 % |
-| LLM | Qwen3-8B Q5 en llama-server | **OpenAI (ChatGPT) o DeepSeek**, los que Felipe ya usa en el bot de WhatsApp (decisión 2026-09-20; Claude descartado como candidato) | Mejor acierto de tool con latencia ≤ 0,5 s. En la nube: `tool_choice` forzado a una tool, razonamiento al mínimo, system prompt estable para cache |
-| TTS | Kokoro, 0,19 s medido | TTS de OpenAI en streaming, ElevenLabs o Fish Audio (ya probado) | Menor tiempo al primer audio con voz española aceptable |
-| Visión | Detector local, siempre | ninguno | 15 FPS continuos no se mandan a la nube |
+| Etapa | Local (4070) | Nube (candidatos) | Regla de elección | Elegido (medido 2026-09-20) |
+|---|---|---|---|---|
+| STT | faster-whisper large-v3-turbo, 0,12 s medido en el traductor | Transcripción de OpenAI (ya usada en el repo InMoov y en el bot de WhatsApp) o un servicio de streaming | Menor latencia fin de habla → texto con WER ≤ 10 % | **local** (0,16 s, WER 8,7 %; nube 0,60 s) |
+| LLM | Qwen3-8B Q5 en llama-server | **OpenAI (ChatGPT) o DeepSeek**, los que Felipe ya usa en el bot de WhatsApp (decisión 2026-09-20; Claude descartado como candidato) | Mejor acierto de tool con latencia ≤ 0,5 s. En la nube: `tool_choice` forzado a una tool, razonamiento al mínimo, system prompt estable para cache | **local** Qwen3-8B (0,35 s, 29/30); respaldo de calidad deepseek-flash 1,0 s o gpt-5.5 1,2 s (30/30) |
+| TTS | Kokoro, 0,19 s medido | TTS de OpenAI en streaming, ElevenLabs o Fish Audio (ya probado) | Menor tiempo al primer audio con voz española aceptable | **local** Kokoro (0,13 s; nube 0,62 s) |
+| Visión | Detector local, siempre | ninguno | 15 FPS continuos no se mandan a la nube | **local** YOLO11n (46 FPS) |
 
 Reglas fijas, independientes del backend:
 
