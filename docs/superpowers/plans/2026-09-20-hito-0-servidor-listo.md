@@ -618,21 +618,21 @@ ssh coramo 'cd ~/coramo && git add tools && git -c user.name="Felipe Ballesteros
 **Interfaces:**
 - Produces: `tools_coramo.json` (esquema de las 5 tools del spec §6.2, formato OpenAI, reutilizado por el benchmark en nube); `llama-server` escuchando en `127.0.0.1:8080`; p50/p95 y acierto de tool.
 
-- [ ] **Step 1: Compilar llama.cpp con CUDA**
+- [x] **Step 1: Compilar llama.cpp con CUDA**
 
 ```bash
 ssh coramo 'cd ~ && git clone --depth=1 https://github.com/ggml-org/llama.cpp && cd llama.cpp && cmake -B build -DGGML_CUDA=ON -DCMAKE_BUILD_TYPE=Release >/dev/null && cmake --build build --config Release -j 24 --target llama-server 2>&1 | tail -1 && ls -la build/bin/llama-server'
 ```
-Expected: `[100%] Built target llama-server` y el binario listado. (10 a 15 min en este Xeon.)
+Expected: `[100%] Built target llama-server` y el binario listado. (10 a 15 min en este Xeon.) Resultado 2026-09-20: compilado con CUDA 12.4; el binario es un lanzador de 18 KB que carga las bibliotecas de `build/bin/`. Ojo: `pkill -f llama-server` por SSH mata al propio shell remoto; usar `pkill -f "build/bin/[l]lama-server"`.
 
-- [ ] **Step 2: Descargar el modelo**
+- [x] **Step 2: Descargar el modelo**
 
 ```bash
 ssh coramo 'export PATH=$HOME/.local/bin:$PATH; uv tool install -q "huggingface_hub[cli]" && mkdir -p ~/modelos && ~/.local/bin/hf download Qwen/Qwen3-8B-GGUF Qwen3-8B-Q5_K_M.gguf --local-dir ~/modelos && ls -la ~/modelos/Qwen3-8B-Q5_K_M.gguf'
 ```
 Expected: archivo de ~5,9 GB. (Si el ejecutable se llama `huggingface-cli` en vez de `hf`, usar ese.)
 
-- [ ] **Step 3: Esquema de tools y lanzador del servidor**
+- [x] **Step 3: Esquema de tools y lanzador del servidor**
 
 ```bash
 ssh coramo 'cat > ~/coramo/tools/bench/tools_coramo.json <<EOT
@@ -650,9 +650,9 @@ exec ~/llama.cpp/build/bin/llama-server -m ~/modelos/Qwen3-8B-Q5_K_M.gguf -ngl 9
 EOT
 chmod +x ~/coramo/tools/bench/llama-server.sh; (nohup ~/coramo/tools/bench/llama-server.sh > /tmp/llama.log 2>&1 &); sleep 40; curl -s http://127.0.0.1:8080/v1/models | head -c 200; echo; nvidia-smi --query-gpu=memory.used --format=csv,noheader'
 ```
-Expected: JSON con `"id":"Qwen3-8B-Q5_K_M.gguf"` y VRAM usada de 6 a 7 GiB. Si la opción `--chat-template-kwargs` no existe en esa versión, quitarla y anteponer `/no_think` al system prompt del paso 4.
+Expected: JSON con `"id":"Qwen3-8B-Q5_K_M.gguf"` y VRAM usada de 6 a 7 GiB. Resultado 2026-09-20: modelo de 5,85 GB en `~/modelos/`, servidor listo en 6 s, 6,1 GiB de VRAM, `--chat-template-kwargs` aceptado. Si la opción `--chat-template-kwargs` no existe en esa versión, quitarla y anteponer `/no_think` al system prompt del paso 4.
 
-- [ ] **Step 4: Benchmark con tool obligatoria**
+- [x] **Step 4: Benchmark con tool obligatoria**
 
 ```bash
 ssh coramo 'export PATH=$HOME/.local/bin:$PATH; uv venv ~/venvs/bench --python 3.12 -q && uv pip install --python ~/venvs/bench/bin/python -q requests openai anthropic soundfile && cat > ~/coramo/tools/bench/bench_llm_local.py <<EOT
@@ -677,9 +677,9 @@ for (i, t, e), dt, o in res:
 EOT
 ~/venvs/bench/bin/python ~/coramo/tools/bench/bench_llm_local.py'
 ```
-Expected: `LLM local Qwen3-8B: p50 0.3x-0.5x s | p95 < 0.8 s | acierto >= 27/30`. Cada fallo se lista para revisar el system prompt después (en el subproyecto A, no aquí).
+Expected: `LLM local Qwen3-8B: p50 0.3x-0.5x s | p95 < 0.8 s | acierto >= 27/30`. Resultado 2026-09-20: `p50 0.35 s | p95 0.68 s | acierto 29/30` (falló "coramo alto ahí" → brazo). Cada fallo se lista para revisar el system prompt después (en el subproyecto A, no aquí).
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 ssh coramo 'cd ~/coramo && git add tools && git -c user.name="Felipe Ballesteros" -c user.email="felipe1024@gmail.com" commit -m "bench: LLM local Qwen3-8B con tools en llama-server"'
@@ -788,7 +788,7 @@ ssh coramo 'cd ~/coramo && git status --short | grep -q env && echo "OJO: no com
 **Interfaces:**
 - Produces: FPS y latencia por cuadro de YOLO11n a 640×480 en CUDA.
 
-- [ ] **Step 1: Entorno y script**
+- [x] **Step 1: Entorno y script**
 
 ```bash
 ssh coramo 'export PATH=$HOME/.local/bin:$PATH; uv venv ~/venvs/vision --python 3.12 -q && uv pip install --python ~/venvs/vision/bin/python -q ultralytics && cat > ~/coramo/tools/bench/bench_vision.py <<EOT
@@ -805,9 +805,9 @@ print(f"YOLO11n 640x480 CUDA: {1/dt:.0f} FPS | {dt*1000:.1f} ms/cuadro | persona
 EOT
 ~/venvs/vision/bin/python ~/coramo/tools/bench/bench_vision.py'
 ```
-Expected: `YOLO11n 640x480 CUDA: > 100 FPS | < 10 ms/cuadro | personas detectadas: 4` (hay 4 personas en bus.jpg). El objetivo del spec (15 FPS, < 100 ms) queda cubierto con margen.
+Expected: `YOLO11n 640x480 CUDA: > 100 FPS | < 10 ms/cuadro | personas detectadas: 4` (hay 4 personas en bus.jpg). El objetivo del spec (15 FPS, < 100 ms) queda cubierto con margen. Resultado 2026-09-20: `46 FPS | 21.8 ms/cuadro | personas detectadas: 4` (la sobrecarga de `predict` por llamada domina; cumple el objetivo con 3× de margen).
 
-- [ ] **Step 2: Commit**
+- [x] **Step 2: Commit**
 
 ```bash
 ssh coramo 'cd ~/coramo && git add tools && git -c user.name="Felipe Ballesteros" -c user.email="felipe1024@gmail.com" commit -m "bench: detector de personas YOLO11n en CUDA"'
