@@ -11,8 +11,8 @@ f.writeframes(b''.join(struct.pack('<h', int(12000*math.sin(2*math.pi*440*i/fr)*
 PY
 echo "fuente: $(wpctl get-volume @DEFAULT_AUDIO_SOURCE@)  salida: $(wpctl get-volume @DEFAULT_AUDIO_SINK@)"
 amixer -c 0 sget 'Rear Mic Boost' | grep -oE 'Front Left: [0-9]+ \[[0-9]+%\] \[[0-9.]+dB\]' | sed 's/^/boost: /'
-# La captura tiene un transitorio de ~2 s al abrirse (medido 2026-09-20): se graban 5,5 s y se analizan los ultimos 3 s.
-arecord -q -D default -d 5.5 -f S16_LE -r 16000 -c 1 /tmp/amb_full.wav
+# La captura tiene un transitorio de ~2 s al abrirse (medido 2026-09-20): se graban 6 s y se analizan los ultimos 3 s.
+arecord -q -D default -d 6 -f S16_LE -r 16000 -c 1 /tmp/amb_full.wav
 python3 - <<'PY'
 import wave
 w=wave.open('/tmp/amb_full.wav'); fr=w.getframerate(); n=w.getnframes(); w.setpos(n-3*fr); d=w.readframes(3*fr); w.close()
