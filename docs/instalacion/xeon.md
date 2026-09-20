@@ -67,5 +67,5 @@ LnkSta: Speed 2.5GT/s, Width x0
 
 `Width x0` significa que **el enlace nunca entrena**: no hay nada al otro lado. El bus 05 está vacío, mientras que los puertos 3, 4 y 5 sí tienen sus dispositivos (dos ASM1042 USB 3.0 y el ASM1061 SATA). No es un ajuste de BIOS ni un driver: el chip de red no responde eléctricamente.
 
-**Conclusión:** el Xeon no tiene ni tendrá puerto Ethernet propio. Para red cableada hace falta un adaptador USB. El que hay (Realtek RTL8153, `0bda:8153`) negocia 1 Gb/s y sí pasa tráfico, pero **pierde alrededor del 94 %**: la cabeza le envió 1,37 GB y recibió 89 MB (detalle en `docs/instalacion/cabeza.md`). Falta determinar si la culpa es del cable o del adaptador. Mientras no haya un adaptador sano, el Xeon va por WiFi, que para esta carga sobra.
+**Conclusión:** el Xeon no tiene ni tendrá puerto Ethernet propio. Para red cableada hace falta un adaptador USB. El que hay (Realtek RTL8153, `0bda:8153`) **no recibe**: transmite bien, pero de 469 paquetes que le envió la cabeza no llegó ninguno, con dos cables distintos (detalle en `docs/instalacion/cabeza.md`). Hay que cambiarlo. Mientras no haya un adaptador sano, el Xeon va por WiFi, que para esta carga sobra.
 

@@ -56,26 +56,28 @@ Las dos detectadas y capturando a 29 fps. `camera_auto_detect=1` basta; no hacen
 
 **Ahorro de energía del WiFi apagado.** Estaba encendido y provocaba picos de latencia: el ping desde el Xeon daba 60 ms de media con máximos de 163 ms. Apagado baja a **8,9 ms de media, máximo 11,3 ms**. Como la Pi usa netplan con systemd-networkd (no NetworkManager), se hizo permanente con el servicio `wifi-powersave-off.service`, que ejecuta `iw dev wlan0 set power_save off` al arrancar. Misma trampa que en la Raspberry del 4WD y en el Xeon.
 
-### Enlace directo por cable: entrena pero pierde el 94 % del tráfico
+### Enlace directo por cable: el adaptador USB del Xeon no recibe
 
-Se configuró el enlace punto a punto que pide el spec (Xeon 192.168.50.1 en su adaptador USB Realtek RTL8153, cabeza 192.168.50.2 en `eth0`, sin puerta de enlace, rutas por defecto intactas en el WiFi de ambas). **La configuración de software es correcta**, pero el enlace no entrega los datos:
+Se configuró el enlace punto a punto que pide el spec (Xeon 192.168.50.1 en su adaptador USB Realtek RTL8153, cabeza 192.168.50.2 en `eth0`, sin puerta de enlace, rutas por defecto intactas en el WiFi de ambas). La configuración de software es correcta, pero el enlace **no transporta datos en un sentido**.
 
-| Medida | Valor |
-|---|---|
-| Enviado por la cabeza (`eth0` TX) | 1,37 GB |
-| Recibido por el Xeon (adaptador USB RX) | 89 MB |
-| Entrega efectiva | ~6 % |
+Medición controlada: 500 paquetes UDP de 200 bytes por sentido, contando en las dos interfaces. Repetida con **dos cables distintos**, con idéntico resultado:
 
-- El enlace negocia **1000 Mb/s full duplex** y la portadora es estable; los contadores de error de ambas interfaces marcan **cero**.
-- El Xeon responde con **`ICMP ip reassembly time exceeded`** de forma continua: le llegan fragmentos sueltos de los mensajes de imagen y nunca completa el datagrama.
-- La resolución ARP termina en `INCOMPLETE`, así que hasta un `ping` deja de salir.
-- **Efecto sobre las cámaras:** Fast DDS anuncia todas las interfaces, así que eligió este camino para el video. Por eso el Xeon veía **1,2 Hz con cortes de 33 s** mientras la cabeza publicaba 15,005 Hz perfectos.
+| Sentido | Salieron | Llegaron |
+|---|---|---|
+| Cabeza → Xeon | 469 | **0** |
+| Xeon → Cabeza | 2 | 2 |
 
-Descartado por software: velocidad (falla igual a 100 Mb/s), EEE, autosuspend USB, cortafuegos (ambos vacíos), driver (`r8152` recargado y dispositivo re-enumerado) y modo del adaptador (probado también CDC-ECM).
+(En el sentido Xeon → cabeza solo salen 2 porque el resto se descarta localmente al no poder resolver ARP; de los que salen, llega el 100 %.)
 
-**Queda desactivado en ambos extremos** hasta tener hardware sano: en el Xeon la conexión `enlace-cabeza` con `autoconnect no`, en la cabeza el netplan movido a `/root/60-enlace-directo.yaml.deshabilitado` y `eth0` abajo. Con solo WiFi las cámaras van a 15 Hz estables.
+Diagnóstico: **la recepción del adaptador USB del Xeon está averiada**. Transmite bien; no recibe nada. Por eso su tabla ARP marca `FAILED` y hasta un `ping` falla: sus preguntas salen pero las respuestas nunca vuelven.
 
-**No está determinado si falla el cable o el adaptador.** Prueba pendiente, una sola acción: conectar el adaptador USB del Xeon al router con ese mismo cable. Si toma dirección por DHCP, ambos sirven y el problema es específico del enlace punto a punto; si no, se cambia primero el cable y luego el adaptador. La red integrada de la placa P9X79 LE no es alternativa: su puerto PCIe reporta ancho de enlace cero, el chip está muerto (ver `docs/instalacion/xeon.md`).
+Descartado antes de llegar aquí: el cable (probados dos), la velocidad (falla igual a 100 Mb/s), EEE, autosuspend USB, cortafuegos (ambos vacíos), el driver (`r8152` recargado y dispositivo re-enumerado) y el modo del adaptador (probado también CDC-ECM). El enlace negocia 1000 Mb/s full duplex con portadora estable y cero errores en los contadores: el fallo es silencioso.
+
+**Efecto colateral importante:** Fast DDS anuncia todas las interfaces, así que eligió este camino para el video y el Xeon veía **1,2 Hz con cortes de 33 s** mientras la cabeza publicaba 15,005 Hz perfectos. Un enlace roto pero "con link" es peor que no tener enlace.
+
+**Queda desactivado en ambos extremos** hasta cambiar el adaptador: en el Xeon la conexión `enlace-cabeza` con `autoconnect no`, en la cabeza el netplan movido a `/root/60-enlace-directo.yaml.deshabilitado` y `eth0` abajo. La configuración está escrita y lista para reactivar. La red integrada de la placa P9X79 LE no es alternativa: su puerto PCIe reporta ancho de enlace cero, el chip está muerto (ver `docs/instalacion/xeon.md`).
+
+**Para arreglarlo:** un adaptador USB 3.0 a Gigabit Ethernet nuevo. Con solo WiFi las cámaras van a 15 Hz estables, así que no es urgente.
 
 ## ROS 2 y cámaras
 
@@ -114,6 +116,6 @@ Nota menor: `camera_calibration_parsers` avisa que no encuentra el archivo de ca
 ## Pendiente
 
 - Reservar 192.168.1.104 para la cabeza en el router (hoy es DHCP).
-- Determinar si el enlace directo falla por el cable o por el adaptador (prueba contra el router).
+- Cambiar el adaptador USB a Ethernet del Xeon para recuperar el enlace directo.
 - Calibrar las dos cámaras (`camera_calibration`) para llenar `camera_info`.
 - Prueba de 10 minutos de `ros2 topic hz` registrada en `docs/mediciones/`.
