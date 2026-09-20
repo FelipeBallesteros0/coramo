@@ -113,7 +113,7 @@ por visión con agarre de objetos, control de impedancia.
 
 | Decisión | Elección | Razón |
 |---|---|---|
-| Columna vertebral | **ROS 2 Jazzy** | Felipe lo domina (4WD); Foxglove, `/joint_states`, TF y MoveIt disponibles; una toolchain para los dos robots de Nabla; reconocible por una comisión. |
+| Columna vertebral | **ROS 2 Lyrical Luth** (LTS hasta mayo de 2031) sobre **Ubuntu 26.04** en el Xeon y en la cabeza | Felipe domina ROS 2 por el 4WD (Jazzy, misma API). Lyrical es la LTS de Ubuntu 26.04, que el Xeon ya trae instalado; `camera_ros` y `foxglove_bridge` ya están publicados para Lyrical. Decidido el 2026-09-20. |
 | IA | **Local o nube, por latencia medida** | Decisión de Felipe (2026-09-18): lo que importa es la velocidad. Backends intercambiables (sección 5.6); los locales quedan como respaldo; la seguridad nunca depende de la red. |
 | GPU de inferencia | **RTX 4070 SUPER** para todo lo crítico | Una sola toolchain (CUDA). |
 | RX 580 | **Pantalla y reserva** | Evita duplicar toolchains (Vulkan/ROCm). |
@@ -154,9 +154,9 @@ por visión con agarre de objetos, control de impedancia.
 ### 4.2 Cabeza: Raspberry Pi 5 de v1
 
 - Se retiran el multiplexor X1011, las RX 580 y el kernel Coreforge. Se
-  reinstala **Ubuntu 24.04 estándar para RPi** (kernel raspi de fábrica, con
-  soporte de cámaras CSI vía libcamera).
-- Corre ROS 2 Jazzy con `camera_ros` publicando las dos cámaras CSI.
+  reinstala **Ubuntu 26.04 estándar para RPi** (kernel raspi de fábrica, con
+  soporte de cámaras CSI vía libcamera), la misma versión que el Xeon.
+- Corre ROS 2 Lyrical Luth con `camera_ros` publicando las dos cámaras CSI.
 - Se une al Xeon por **cable Ethernet directo** con IP estática (red aislada
   del WiFi de la casa), no por WiFi.
 
@@ -288,6 +288,10 @@ La elección se hace con benchmark en la tarea cero, no por preferencia.
 
 Reglas fijas, independientes del backend:
 
+- Los modelos locales corren como **servidores de modelo** (llama-server para
+  el LLM, un servidor HTTP para STT y otro para TTS) en entornos `uv` con
+  Python 3.12, independientes del Python 3.14 del sistema. Los nodos ROS son
+  clientes HTTP en todos los casos: local y nube comparten la misma interfaz.
 - Los modelos locales quedan cargados aunque el perfil use nube: son el
   **respaldo automático** si la red falla o una petición supera el tiempo
   límite (2 s). Sin internet el robot sigue funcionando, más lento.
@@ -477,7 +481,7 @@ corriente resulta insuficiente, se reabre la decisión con datos.
 
 ### 8.1 Nodo cabeza (RPi5)
 
-- Ubuntu 24.04 estándar para RPi5, ROS 2 Jazzy base, `camera_ros` (libcamera).
+- Ubuntu 26.04 estándar para RPi5, ROS 2 Lyrical Luth base, `camera_ros` (libcamera).
 - Publica cada cámara a 640×480, 15 FPS, JPEG comprimido. Ancho de banda
   ≈ 1,2 MB/s por las dos: trivial por Ethernet.
 - Solo captura y publica. Ninguna inferencia en la RPi5.
@@ -525,7 +529,7 @@ corriente resulta insuficiente, se reabre la decisión con datos.
 
 | Hito | Contenido | Criterio de aceptación |
 |---|---|---|
-| **0 — Servidor listo** | Xeon encendido y verificado: Ubuntu 24.04, driver NVIDIA + CUDA 12, amdgpu como pantalla, ROS 2 Jazzy, Discovery Server, fuente. RPi5 reinstalada como cabeza. Modelos locales descargados y claves de API configuradas. Benchmark local vs nube por etapa. | Tabla de latencia por backend (STT, LLM, TTS, p50 y p95 de 30 peticiones) y FPS del detector, medidos. Tabla de decisión de backends. Cámaras visibles desde el Xeon. |
+| **0 — Servidor listo** | Xeon verificado: Ubuntu 26.04, driver NVIDIA (ya instalado) y CUDA por pip, RX 580 como pantalla, red por cable (RTL8153), ROS 2 Lyrical Luth, Discovery Server, fuente. Servidores de modelo en entornos `uv` con Python 3.12. RPi5 reinstalada como cabeza con 26.04 + Lyrical. Modelos locales descargados y claves de API configuradas. Benchmark local vs nube por etapa. | Tabla de latencia por backend (STT, LLM, TTS, p50 y p95 de 30 peticiones) y FPS del detector, medidos. Tabla de decisión de backends. Cámaras visibles desde el Xeon. |
 | **A — Cerebro** | Paquetes `coramo_brain`, `coramo_msgs`, `coramo_bringup`; `body_bridge` simulado. | "coramo, cierra la mano" → `/body/command_safe` en ≤ 1,5 s desde fin de habla, medido. Conversación básica. Tests verdes sin robot. |
 | **B — Cuerpo (mano primero)** | Protocolo v2, firmware Pico C++, `body_bridge` real, `safety`. | Mano y cabeza comandadas desde ROS con telemetría en Foxglove. Watchdog y parada verificados. |
 | **D básico** | Nodo cabeza, detector, `look_at`, saludo. | El robot detecta a una persona, la mira, la saluda y ejecuta una orden de mano. |
@@ -586,13 +590,13 @@ números. Eso es directamente material de la tesis.
 
 | Riesgo / decisión | Mitigación o cuándo se decide |
 |---|---|
-| El servidor trae Ubuntu 26.04, y ROS 2 Jazzy solo tiene paquetes para 24.04 | Decisión de Felipe (sección 4.1): reinstalar 24.04 + Jazzy o quedarse en 26.04 + Lyrical Luth (LTS hasta 2031; `camera_ros` y `foxglove_bridge` ya publicados para Lyrical). |
+| Lyrical Luth tiene 4 meses (mayo 2026) y menos respuestas en foros que Jazzy | Decidido el 2026-09-20 quedarse en 26.04 + Lyrical (LTS hasta 2031, dos parches publicados, `camera_ros` y `foxglove_bridge` disponibles). La API de ROS 2 es la misma que en Jazzy; si un paquete faltara en Lyrical, se compila desde fuente en el workspace. |
 | Python 3.14 del sistema en 26.04 y ruedas de ML (torch, CTranslate2, onnxruntime) | Los modelos locales corren como **servidores de modelo** en su propio entorno `uv` con Python 3.12 (llama-server, un servidor HTTP para STT y otro para TTS). Los nodos ROS son clientes HTTP, igual que con la nube. Aplica en cualquiera de los dos SO. |
 | Xeon sin AVX2 | Ninguna inferencia en CPU. Verificar en tarea cero que PyTorch y CTranslate2 importan sin "Illegal instruction". |
 | Fuente insuficiente para dos GPUs | Verificar potencia y conectores PCIe antes de encender ambas. |
 | VRAM justa (≈ 9 de 12 GB) | Medir en tarea cero; bajar el LLM a Q4_K_M si supera 11 GB. |
 | DDS entre dos máquinas | Discovery Server + Ethernet directo + verificación de 10 min. Si aun así falla, respaldo: `rmw_zenoh_cpp`. |
-| Cámaras CSI en Ubuntu 24.04 para RPi5 | Verificar con `cam -l` antes de instalar ROS. Si libcamera no las ve, respaldo: Raspberry Pi OS con ROS en contenedor. |
+| Cámaras CSI en Ubuntu 26.04 para RPi5 | Verificar con `cam -l` antes de instalar ROS. Si libcamera no las ve, respaldo: Raspberry Pi OS con ROS en contenedor. |
 | PWM a 1,5 kHz por PCA9685 | Aceptado. Medir ruido y rizado en C; reabrir con datos si el control de corriente no alcanza. |
 | Corriente de bloqueo de los motores vs BTS7960 y fuente | Se conoce en el inventario. Umbrales de `overcurrent` salen de ahí. |
 | Estéreo vs RGB-D para distancia | Se decide en D completo con datos de D básico (si la altura de la caja basta para "< 2 m", no hace falta estéreo). |
