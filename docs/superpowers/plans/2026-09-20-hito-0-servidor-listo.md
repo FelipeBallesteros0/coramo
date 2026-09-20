@@ -898,22 +898,648 @@ cd ~/coramo && git add docs && git -c user.name="Felipe Ballesteros" -c user.ema
 | Red | `wlan0` con 192.168.1.104 por DHCP; `eth0` y el USB Realtek `enxf8ce21123f7b`, ambos sin cable |
 | Cámaras | **Las dos detectadas y capturando**: dos OV5647 (Camera Module v1, 5 MP), una por puerto CSI (`i2c@80000` y `i2c@88000`), 24 a 29 fps en prueba. `camera_auto_detect=1` basta; no hace falta `config.txt.snippet`. |
 
-- [ ] **Step 1: Ejecutar la migración al SSD**
+- [x] **Step 1: Ejecutar la migración al SSD** — hecho el 2026-09-20 por Felipe (el clasificador bloquea formatear discos, así que lo ejecutó él con `ssh cabeza 'bash /tmp/a_ssd.sh'`).
 
-El script `head/migrar_a_ssd.sh` (copiado en la Pi como `/tmp/a_ssd.sh`) hace todo en un paso: particiona el SSD, copia la raíz y `/boot/firmware` con rsync, reescribe el `fstab` y el `cmdline.txt` **del SSD** para que apunten a sus propias particiones por `PARTUUID`, y deja `BOOT_ORDER=0xf416` con `PCIE_PROBE=1`. Aborta solo si la raíz no está en la microSD o si el SSD ya tiene particiones.
+- [x] **Step 2: Reiniciar y comprobar que arrancó del SSD** — hecho. Resultado: raíz en `/dev/nvme0n1p2`, `/boot/firmware` en `/dev/nvme0n1p1`, arranque en ~50 s, lectura 434 MB/s. La microSD queda montada en ningún sitio, intacta como rescate.
+
+**Estado del arranque tras la migración (sin ambigüedad en ninguna dirección):**
+
+| Unidad | Etiquetas | Cómo arranca |
+|---|---|---|
+| SSD (en uso) | `SSDBOOT` / `writable-ssd` | `root=PARTUUID=d6b594f8-02` |
+| microSD (rescate) | `system-boot` / `writable` | `root=LABEL=writable`, que solo existe en ella |
+
+`BOOT_ORDER=0xf416` con `PCIE_PROBE=1`: prueba NVMe, luego microSD, luego USB.
+
+**Riesgo a vigilar:** el sistema no tiene `flash-kernel` ni `/etc/default/flash-kernel`, pero `linux-firmware-raspi` gestiona `/boot/firmware/current/` con el esquema A/B (`tryboot_a_b=1`). Si una actualización de kernel llegara a regenerar `current/cmdline.txt` con `root=LABEL=writable`, apuntaría a la microSD en vez del SSD. Por eso conviene **no dejar la microSD puesta**: así el fallo sería visible en vez de arrancar en silencio el sistema viejo. Tras cada actualización de kernel, comprobar `findmnt -n -o SOURCE /`.
+
+#### 11.B Red, cámaras y ROS
+
+- [x] **Step 6: Verificación de las dos cámaras** — hecho el 2026-09-20. `cam -l` lista las dos OV5647 y ambas capturan a 29 fps tras arrancar del SSD. No hacen falta overlays: `camera_auto_detect=1` basta, y `head/config.txt.snippet` queda solo por si alguna vez se cambian los sensores.
+
+**Trampa encontrada:** en Ubuntu el usuario creado por cloud-init **no queda en el grupo `video`**, así que libcamera falla con `Permission denied` en `/dev/media*` y `cam -l` no lista nada. Arreglo aplicado, necesario también para que `head-cameras.service` funcione (corre como `User=coramo`):
 
 ```bash
-ssh cabeza 'bash /tmp/a_ssd.sh'
+ssh cabeza "echo coramo123 | sudo -S -p '' usermod -aG video,render coramo"
 ```
-Expected: termina en `LISTO`, mostrando el `fstab` y el `root=PARTUUID=...` del SSD. **Borra el contenido del SSD**, que hoy está vacío. Requiere aprobación explícita de Felipe porque formatea un disco.
+Los grupos toman efecto en la siguiente sesión. Verificación: `ssh cabeza 'id -nG'` debe incluir `video` y `render`.
 
-- [ ] **Step 2: Reiniciar y comprobar que arrancó del SSD**
+- [ ] **Step 6b: IP fija y reserva en el router**
+
+Hoy la cabeza está en **192.168.1.104 por WiFi con DHCP** (`eth0` y el adaptador USB Realtek están sin cable). Fijarla:
 
 ```bash
-ssh cabeza 'sudo reboot'; sleep 60
-ssh cabeza 'findmnt -n -o SOURCE /; lsblk -o NAME,SIZE,MOUNTPOINTS | grep -E "nvme|mmcblk"; sudo hdparm -t --direct /dev/nvme0n1 | tail -1'
+ssh cabeza "nmcli -t -f NAME,TYPE,DEVICE con show --active"
+ssh cabeza "echo coramo123 | sudo -S -p '' nmcli con mod '<conexión wifi>' ipv4.method manual ipv4.addresses 192.168.1.91/24 ipv4.gateway 192.168.1.1 ipv4.dns 192.168.1.1 && echo coramo123 | sudo -S -p '' nmcli con up '<conexión wifi>'"
 ```
-Expected: raíz en `/dev/nvme0n1p2`. Si arranca desde la microSD igual, revisar que el EEPROM tomó `0xf416` (`sudo rpi-eeprom-config`). Recuperación: apagar y sacar el SSD; la Pi vuelve a la microSD, que queda intacta.
+Expected: `ssh coramo@192.168.1.91` responde. Reservar también la IP en el router. Mientras no se haga, usar 192.168.1.104 en `head-cameras.service` y en el Discovery Server.
+
+- [ ] **Step 7: Documentar y commit**
+
+```bash
+ssh coramo 'cat >> ~/coramo/docs/instalacion/xeon.md <<EOT
+
+## Red
+- Cable: adaptador USB Realtek RTL8153 (enxf8ce21123f7b), conexión NM "cable", 192.168.1.90/24, gw 192.168.1.1, métrica 100. Reserva DHCP hecha en el router.
+- WiFi MediaTek (wlx90de80052ea8): respaldo, métrica 600, powersave off por /etc/NetworkManager/conf.d/wifi-powersave-off.conf.
+- La placa no tiene Ethernet PCI.
+EOT
+cd ~/coramo && git add docs && git -c user.name="Felipe Ballesteros" -c user.email="felipe1024@gmail.com" commit -m "docs(xeon): red por cable con IP fija y WiFi sin powersave"'
+```
+
+---
+
+### Task 3: Herramientas base, `uv`, Python 3.12 y CUDA toolkit
+
+**Files:**
+- Modify: `docs/instalacion/xeon.md` (sección "Herramientas")
+
+**Interfaces:**
+- Produces: `uv` en `~/.local/bin`, Python 3.12 gestionado por `uv`, `nvcc` disponible, `espeak-ng`, `ffmpeg`, `build-essential`, `cmake`, `git-lfs`, `htop`, `nvtop`.
+
+- [x] **Step 1: Paquetes del sistema**
+
+```bash
+ssh coramo "echo coramo123 | sudo -S -p '' apt-get update -qq && echo coramo123 | sudo -S -p '' apt-get install -y -qq build-essential cmake git git-lfs curl wget htop nvtop espeak-ng ffmpeg libsndfile1 alsa-utils python3-venv nvidia-cuda-toolkit && nvcc --version | tail -1"
+```
+Expected: última línea `Cuda compilation tools, release 12.x` o `13.x`. Resultado 2026-09-20: `Build cuda_12.4.r12.4` desde el archivo de Ubuntu 26.04. Ojo: la imagen no traía `curl` ni `git`. Si `nvidia-cuda-toolkit` no existe en el archivo de 26.04, usar el repositorio de NVIDIA:
+```bash
+ssh coramo "wget -q https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2604/x86_64/cuda-keyring_1.1-1_all.deb -O /tmp/k.deb && echo coramo123 | sudo -S -p '' dpkg -i /tmp/k.deb && echo coramo123 | sudo -S -p '' apt-get update -qq && echo coramo123 | sudo -S -p '' apt-get install -y -qq cuda-toolkit-13-2 && ls /usr/local/cuda/bin/nvcc"
+```
+(Si `ubuntu2604` tampoco existe todavía, usar `ubuntu2404` del mismo URL: el toolkit es solo userland y funciona con el driver 595.)
+
+- [x] **Step 2: Instalar `uv` y Python 3.12**
+
+```bash
+ssh coramo 'curl -LsSf https://astral.sh/uv/install.sh | sh >/dev/null 2>&1; export PATH=$HOME/.local/bin:$PATH; uv --version && uv python install 3.12 && uv python list | grep 3.12'
+```
+Expected: `uv 0.x.y` y una línea `cpython-3.12.x-linux-x86_64-gnu` instalada.
+
+- [x] **Step 3: Entorno de verificación de CUDA**
+
+```bash
+ssh coramo 'export PATH=$HOME/.local/bin:$PATH; mkdir -p ~/venvs && uv venv ~/venvs/cuda-check --python 3.12 -q && uv pip install --python ~/venvs/cuda-check/bin/python -q torch && ~/venvs/cuda-check/bin/python -c "import torch; print(torch.__version__, torch.cuda.is_available(), torch.cuda.get_device_name(0))"'
+```
+Expected: `2.x.y+cu12x True NVIDIA GeForce RTX 4070 SUPER`. Resultado 2026-09-20: `2.14.0+cu130 True NVIDIA GeForce RTX 4070 SUPER` (PyPI ya publica ruedas CUDA 13; funcionan con el driver 595). Si `False`: el driver no está cargado (`nvidia-smi` debe funcionar) o la rueda es CPU; reinstalar con `--index-url https://download.pytorch.org/whl/cu128`.
+
+- [x] **Step 4: Documentar y commit**
+
+```bash
+ssh coramo 'cat >> ~/coramo/docs/instalacion/xeon.md <<EOT
+
+## Herramientas
+- apt: build-essential cmake git git-lfs curl wget htop nvtop espeak-ng ffmpeg libsndfile1 alsa-utils nvidia-cuda-toolkit (nvcc $(nvcc --version | tail -1 | grep -oE "release [0-9.]+")).
+- uv en ~/.local/bin; Python 3.12 por uv; venvs en ~/venvs/<nombre>.
+- torch CUDA verificado en ~/venvs/cuda-check.
+EOT
+cd ~/coramo && git add docs && git -c user.name="Felipe Ballesteros" -c user.email="felipe1024@gmail.com" commit -m "docs(xeon): herramientas base, uv, Python 3.12 y CUDA"'
+```
+
+---
+
+### Task 4: Fuente de poder y estabilidad bajo carga
+
+**Files:**
+- Create: `tools/bench/gpu_load.py`
+- Modify: `docs/instalacion/xeon.md` (sección "Fuente")
+
+**Interfaces:**
+- Produces: confirmación de que las dos GPUs pueden trabajar a la vez sin reinicios.
+
+- [x] **Step 1 (Felipe, físico): leer la etiqueta de la fuente** y anotar potencia total, amperios del riel de 12 V y cuántos conectores PCIe de 8 pines tiene. Mínimo aceptable: 750 W y tres conectores (dos para el adaptador de la 4070, uno para la RX 580).
+
+- [x] **Step 2: Escribir la carga de prueba**
+
+```bash
+ssh coramo 'cat > ~/coramo/tools/bench/gpu_load.py <<EOT
+"""Carga sostenida en la 4070 durante N segundos. Uso: python gpu_load.py 120"""
+import sys, time, torch
+segundos = int(sys.argv[1]) if len(sys.argv) > 1 else 60
+a = torch.randn(8192, 8192, device="cuda", dtype=torch.float16)
+b = torch.randn(8192, 8192, device="cuda", dtype=torch.float16)
+t0 = time.time(); n = 0
+while time.time() - t0 < segundos:
+    c = a @ b; n += 1
+torch.cuda.synchronize()
+print(f"{n} multiplicaciones en {segundos} s; max VRAM {torch.cuda.max_memory_allocated()/2**30:.1f} GiB")
+EOT'
+```
+
+- [x] **Step 3: Correr 120 s de carga mientras se vigila potencia y errores del kernel**
+
+```bash
+ssh coramo 'export PATH=$HOME/.local/bin:$PATH; (nvidia-smi --query-gpu=power.draw,temperature.gpu,clocks.sm --format=csv -l 10 > /tmp/power.log &) ; ~/venvs/cuda-check/bin/python ~/coramo/tools/bench/gpu_load.py 120; pkill -f "nvidia-smi --query-gpu=power.draw"; tail -4 /tmp/power.log; echo coramo123 | sudo -S -p "" journalctl -k --since "-5 min" | grep -ciE "xid|reset|pcie bus error"'
+```
+Expected: potencia entre 180 y 220 W, temperatura < 85 °C, y el último número `0` (sin errores Xid ni de bus). Resultado 2026-09-20: fuente de 750 W; 220 W sostenidos, 82 °C máx, 2,67 GHz, PCIe gen 3, 74 TFLOPS fp16, 0 errores, sin reinicio. Si el equipo se reinicia o aparece un Xid: la fuente no alcanza o el adaptador de la 4070 está mal conectado; parar aquí.
+
+- [x] **Step 4: Documentar y commit**
+
+```bash
+ssh coramo 'cat >> ~/coramo/docs/instalacion/xeon.md <<EOT
+
+## Fuente
+- Etiqueta: (marca, W totales, A en 12 V, conectores PCIe).
+- Prueba gpu_load.py 120 s: potencia pico (W), temperatura máx (°C), errores de kernel: 0.
+EOT
+cd ~/coramo && git add docs tools && git -c user.name="Felipe Ballesteros" -c user.email="felipe1024@gmail.com" commit -m "docs(xeon): fuente verificada bajo carga; script gpu_load"'
+```
+(Rellenar los paréntesis con los valores reales antes del commit.)
+
+---
+
+### Task 5: TTS local (Kokoro) y set de 30 órdenes con audio
+
+**Files:**
+- Create: `tools/bench/ordenes.txt`, `tools/bench/bench_tts.py`, `tools/bench/gen_ordenes.py`
+- Create (Xeon, fuera del repo): `~/datos/ordenes/*.wav`
+
+**Interfaces:**
+- Produces: `ordenes.txt` (30 líneas, una orden por línea, con la tool esperada separada por `|`); 30 WAV de 16 kHz mono en `~/datos/ordenes/NN.wav`; función `medir(fn, n) -> (p50, p95)` reutilizada en todos los benchmarks vía `tools/bench/comun.py`.
+
+- [x] **Step 1: Escribir el set de órdenes**
+
+```bash
+ssh coramo 'cat > ~/coramo/tools/bench/ordenes.txt <<EOT
+coramo cierra la mano|mano
+coramo abre la mano|mano
+coramo haz el gesto de paz|mano
+coramo haz ok con la mano|mano
+coramo levanta el pulgar|mano
+coramo mueve el índice a noventa grados|mano
+coramo cierra solo el meñique|mano
+coramo haz rock|mano
+coramo saluda|brazo
+coramo pon el brazo en reposo|brazo
+coramo extiende el brazo|brazo
+coramo levanta el brazo|brazo
+coramo baja el brazo despacio|brazo
+coramo mira a la izquierda|cabeza
+coramo mira a la derecha|cabeza
+coramo mira al frente|cabeza
+coramo mírame|cabeza
+coramo qué hora es|responder
+coramo cómo te llamas|responder
+coramo quién te construyó|responder
+coramo cuéntame un chiste corto|responder
+coramo qué puedes hacer|responder
+coramo cuánto es doce por tres|responder
+coramo buenos días|responder
+coramo detente|detener
+coramo para|detener
+coramo alto ahí|detener
+coramo no te muevas|detener
+hola coramo cierra el puño|mano
+oye coramo mira hacia arriba|cabeza
+EOT
+wc -l ~/coramo/tools/bench/ordenes.txt'
+```
+Expected: `30`.
+
+- [x] **Step 2: Módulo común de medición**
+
+```bash
+ssh coramo 'cat > ~/coramo/tools/bench/comun.py <<EOT
+"""Utilidades comunes de los benchmarks del hito 0."""
+import statistics, time
+from pathlib import Path
+
+ORDENES = Path(__file__).with_name("ordenes.txt")
+DATOS = Path.home() / "datos" / "ordenes"
+
+def cargar_ordenes():
+    """Devuelve [(indice, texto, tool_esperada)] a partir de ordenes.txt."""
+    filas = []
+    for i, linea in enumerate(ORDENES.read_text(encoding="utf-8").splitlines(), 1):
+        texto, tool = linea.rsplit("|", 1)
+        filas.append((i, texto.strip(), tool.strip()))
+    return filas
+
+def medir(fn, items, calentamiento=2):
+    """Ejecuta fn(item) sobre items; ignora los primeros `calentamiento`.
+    Devuelve (p50, p95, resultados) en segundos."""
+    tiempos, resultados = [], []
+    for k, item in enumerate(items):
+        t0 = time.perf_counter(); r = fn(item); dt = time.perf_counter() - t0
+        if k >= calentamiento:
+            tiempos.append(dt)
+        resultados.append((item, dt, r))
+    tiempos.sort()
+    p50 = statistics.median(tiempos)
+    p95 = tiempos[int(round(0.95 * (len(tiempos) - 1)))]
+    return p50, p95, resultados
+
+def imprimir(nombre, p50, p95, extra=""):
+    print(f"{nombre}: p50 {p50:.2f} s | p95 {p95:.2f} s {extra}")
+EOT'
+```
+
+- [x] **Step 3: Entorno TTS y script de benchmark**
+
+```bash
+ssh coramo 'export PATH=$HOME/.local/bin:$PATH; uv venv ~/venvs/tts --python 3.12 -q && uv pip install --python ~/venvs/tts/bin/python -q kokoro soundfile numpy && cat > ~/coramo/tools/bench/bench_tts.py <<EOT
+"""Latencia de Kokoro en GPU: tiempo hasta el primer audio por frase. venv: ~/venvs/tts"""
+import sys, time, torch, soundfile as sf, numpy as np
+from kokoro import KPipeline
+sys.path.insert(0, __file__.rsplit("/", 1)[0]); from comun import cargar_ordenes, medir, imprimir
+VOZ = "ef_dora"  # voz femenina en español; alternativa em_alex
+pipe = KPipeline(lang_code="e", device="cuda")
+def primer_audio(item):
+    _, texto, _ = item
+    for _gs, _ps, audio in pipe(texto, voice=VOZ):
+        return len(audio)  # el primer trozo ya se podría reproducir
+p50, p95, _ = medir(primer_audio, cargar_ordenes())
+imprimir("TTS local Kokoro " + VOZ, p50, p95)
+EOT
+~/venvs/tts/bin/python ~/coramo/tools/bench/bench_tts.py'
+```
+Expected: una línea `TTS local Kokoro ef_dora: p50 0.2x s | p95 0.3x s` (el traductor midió 0,19 s). Resultado 2026-09-20: `p50 0.13 s | p95 0.14 s`. Si sale `> 0.6 s`, está en CPU: revisar que `torch.cuda.is_available()` sea `True` en ese venv.
+
+- [x] **Step 4: Generar los 30 WAV del set (voz sintética, 16 kHz mono)**
+
+```bash
+ssh coramo 'cat > ~/coramo/tools/bench/gen_ordenes.py <<EOT
+"""Genera ~/datos/ordenes/NN.wav (16 kHz mono) con Kokoro para cada orden. venv: ~/venvs/tts"""
+import sys, numpy as np, soundfile as sf, torch
+from kokoro import KPipeline
+sys.path.insert(0, __file__.rsplit("/", 1)[0]); from comun import cargar_ordenes, DATOS
+DATOS.mkdir(parents=True, exist_ok=True)
+pipe = KPipeline(lang_code="e", device="cuda")
+for i, texto, _ in cargar_ordenes():
+    voz = "ef_dora" if i % 2 else "em_alex"  # alterna dos voces
+    partes = [np.asarray(a) for _, _, a in pipe(texto, voice=voz)]
+    audio24 = np.concatenate(partes)
+    audio16 = torch.nn.functional.interpolate(torch.tensor(audio24)[None, None], scale_factor=16000/24000, mode="linear")[0, 0].numpy()
+    sf.write(DATOS / f"{i:02d}.wav", audio16, 16000, subtype="PCM_16")
+print("generados", len(list(DATOS.glob("*.wav"))))
+EOT
+~/venvs/tts/bin/python ~/coramo/tools/bench/gen_ordenes.py'
+```
+Expected: `generados 30`. Resultado 2026-09-20: 30 WAV, 1,8 MB en `~/datos/ordenes/`. (Estas voces sintéticas sirven para el benchmark; el set definitivo con voces reales lo pide el spec §6.4 y se graba en el subproyecto A.)
+
+- [x] **Step 5: Commit**
+
+```bash
+ssh coramo 'cd ~/coramo && git add tools && git -c user.name="Felipe Ballesteros" -c user.email="felipe1024@gmail.com" commit -m "bench: set de 30 órdenes, módulo común y benchmark de TTS local"'
+```
+
+---
+
+### Task 6: STT local (faster-whisper large-v3-turbo)
+
+**Files:**
+- Create: `tools/bench/bench_stt.py`
+
+**Interfaces:**
+- Consumes: `~/datos/ordenes/NN.wav`, `comun.cargar_ordenes`, `comun.medir`.
+- Produces: p50/p95 de transcripción y WER aproximado sobre las 30 órdenes.
+
+- [x] **Step 1: Entorno STT con las librerías CUDA por pip**
+
+```bash
+ssh coramo 'export PATH=$HOME/.local/bin:$PATH; uv venv ~/venvs/stt --python 3.12 -q && uv pip install --python ~/venvs/stt/bin/python -q faster-whisper nvidia-cublas-cu12 nvidia-cudnn-cu12 jiwer && ~/venvs/stt/bin/python -c "import ctranslate2; print(ctranslate2.__version__, ctranslate2.get_cuda_device_count())"'
+```
+Expected: `4.x.y 1`. Si `0`: exportar `LD_LIBRARY_PATH` con las rutas de `nvidia/cublas/lib` y `nvidia/cudnn/lib` del venv (el script del paso 2 lo hace solo).
+
+- [x] **Step 2: Script de benchmark**
+
+```bash
+ssh coramo 'cat > ~/coramo/tools/bench/bench_stt.py <<EOT
+"""Latencia y WER de faster-whisper large-v3-turbo en CUDA. venv: ~/venvs/stt"""
+import os, sys, site
+# rutas de cuBLAS/cuDNN instaladas por pip
+for pkg in ("cublas", "cudnn"):
+    for sp in site.getsitepackages():
+        d = os.path.join(sp, "nvidia", pkg, "lib")
+        if os.path.isdir(d):
+            os.environ["LD_LIBRARY_PATH"] = d + ":" + os.environ.get("LD_LIBRARY_PATH", "")
+from faster_whisper import WhisperModel
+from jiwer import wer
+sys.path.insert(0, __file__.rsplit("/", 1)[0]); from comun import cargar_ordenes, medir, imprimir, DATOS
+modelo = WhisperModel("large-v3-turbo", device="cuda", compute_type="float16")
+def transcribir(item):
+    i, _, _ = item
+    segs, _info = modelo.transcribe(str(DATOS / f"{i:02d}.wav"), language="es", beam_size=1, vad_filter=False)
+    return " ".join(s.text.strip() for s in segs)
+p50, p95, res = medir(transcribir, cargar_ordenes())
+ref = [t.lower() for _, t, _ in cargar_ordenes()]; hyp = [r.lower() for _, _, r in res]
+imprimir("STT local whisper-turbo", p50, p95, f"| WER {wer(ref, hyp)*100:.1f} %")
+for (i, t, _), _, h in res[:5]:
+    print(f"  {i:02d} ref: {t} | hyp: {h}")
+EOT
+~/venvs/stt/bin/python ~/coramo/tools/bench/bench_stt.py'
+```
+Expected: `STT local whisper-turbo: p50 0.1x s | p95 0.2x s | WER < 10 %` y cinco pares ref/hyp legibles. La primera ejecución descarga el modelo (~1,6 GB). Resultado 2026-09-20: `p50 0.16 s | p95 0.17 s | WER 8.7 %` sobre texto normalizado (sin puntuación ni tildes); errores en "ok", "rock" (anglicismos con voz sintética), "pon/pone" y números escritos en cifras. CTranslate2 4.8.2.
+
+- [x] **Step 3: Commit**
+
+```bash
+ssh coramo 'cd ~/coramo && git add tools && git -c user.name="Felipe Ballesteros" -c user.email="felipe1024@gmail.com" commit -m "bench: STT local con faster-whisper turbo"'
+```
+
+---
+
+### Task 7: LLM local (llama.cpp CUDA + Qwen3-8B Q5_K_M) con tools
+
+**Files:**
+- Create: `tools/bench/tools_coramo.json`, `tools/bench/bench_llm_local.py`, `~/coramo/tools/bench/llama-server.sh`
+
+**Interfaces:**
+- Produces: `tools_coramo.json` (esquema de las 5 tools del spec §6.2, formato OpenAI, reutilizado por el benchmark en nube); `llama-server` escuchando en `127.0.0.1:8080`; p50/p95 y acierto de tool.
+
+- [x] **Step 1: Compilar llama.cpp con CUDA**
+
+```bash
+ssh coramo 'cd ~ && git clone --depth=1 https://github.com/ggml-org/llama.cpp && cd llama.cpp && cmake -B build -DGGML_CUDA=ON -DCMAKE_BUILD_TYPE=Release >/dev/null && cmake --build build --config Release -j 24 --target llama-server 2>&1 | tail -1 && ls -la build/bin/llama-server'
+```
+Expected: `[100%] Built target llama-server` y el binario listado. (10 a 15 min en este Xeon.) Resultado 2026-09-20: compilado con CUDA 12.4; el binario es un lanzador de 18 KB que carga las bibliotecas de `build/bin/`. Ojo: `pkill -f llama-server` por SSH mata al propio shell remoto; usar `pkill -f "build/bin/[l]lama-server"`.
+
+- [x] **Step 2: Descargar el modelo**
+
+```bash
+ssh coramo 'export PATH=$HOME/.local/bin:$PATH; uv tool install -q "huggingface_hub[cli]" && mkdir -p ~/modelos && ~/.local/bin/hf download Qwen/Qwen3-8B-GGUF Qwen3-8B-Q5_K_M.gguf --local-dir ~/modelos && ls -la ~/modelos/Qwen3-8B-Q5_K_M.gguf'
+```
+Expected: archivo de ~5,9 GB. (Si el ejecutable se llama `huggingface-cli` en vez de `hf`, usar ese.)
+
+- [x] **Step 3: Esquema de tools y lanzador del servidor**
+
+```bash
+ssh coramo 'cat > ~/coramo/tools/bench/tools_coramo.json <<EOT
+[
+ {"type":"function","function":{"name":"mano","description":"Mueve la mano robótica: un gesto completo o dedos individuales en grados.","parameters":{"type":"object","properties":{"gesto":{"type":"string","enum":["abre","cierra","paz","ok","rock","pulgar"]},"dedos":{"type":"object","additionalProperties":{"type":"number"}}},"additionalProperties":false}}},
+ {"type":"function","function":{"name":"brazo","description":"Mueve el brazo a una pose nombrada o a ángulos articulares en grados.","parameters":{"type":"object","properties":{"pose":{"type":"string","enum":["reposo","saludo","extendido","arriba","abajo"]},"articulaciones":{"type":"object","additionalProperties":{"type":"number"}}},"additionalProperties":false}}},
+ {"type":"function","function":{"name":"cabeza","description":"Orienta la cabeza del robot.","parameters":{"type":"object","properties":{"mirar":{"type":"string","enum":["persona","frente","izquierda","derecha","arriba","abajo"]}},"required":["mirar"],"additionalProperties":false}}},
+ {"type":"function","function":{"name":"responder","description":"Responde por voz cuando no hay acción física.","parameters":{"type":"object","properties":{"texto":{"type":"string"}},"required":["texto"],"additionalProperties":false}}},
+ {"type":"function","function":{"name":"detener","description":"Parada inmediata de todos los motores.","parameters":{"type":"object","properties":{},"additionalProperties":false}}}
+]
+EOT
+cat > ~/coramo/tools/bench/llama-server.sh <<EOT
+#!/bin/bash
+exec ~/llama.cpp/build/bin/llama-server -m ~/modelos/Qwen3-8B-Q5_K_M.gguf -ngl 999 -c 8192 -fa on --cache-type-k q8_0 --cache-type-v q8_0 --jinja --chat-template-kwargs "{\"enable_thinking\": false}" --host 127.0.0.1 --port 8080 --parallel 1
+EOT
+chmod +x ~/coramo/tools/bench/llama-server.sh; (nohup ~/coramo/tools/bench/llama-server.sh > /tmp/llama.log 2>&1 &); sleep 40; curl -s http://127.0.0.1:8080/v1/models | head -c 200; echo; nvidia-smi --query-gpu=memory.used --format=csv,noheader'
+```
+Expected: JSON con `"id":"Qwen3-8B-Q5_K_M.gguf"` y VRAM usada de 6 a 7 GiB. Resultado 2026-09-20: modelo de 5,85 GB en `~/modelos/`, servidor listo en 6 s, 6,1 GiB de VRAM, `--chat-template-kwargs` aceptado. Si la opción `--chat-template-kwargs` no existe en esa versión, quitarla y anteponer `/no_think` al system prompt del paso 4.
+
+- [x] **Step 4: Benchmark con tool obligatoria**
+
+```bash
+ssh coramo 'export PATH=$HOME/.local/bin:$PATH; uv venv ~/venvs/bench --python 3.12 -q && uv pip install --python ~/venvs/bench/bin/python -q requests openai anthropic soundfile && cat > ~/coramo/tools/bench/bench_llm_local.py <<EOT
+"""Latencia y acierto de tool de Qwen3-8B en llama-server. venv: ~/venvs/bench"""
+import json, sys, requests
+sys.path.insert(0, __file__.rsplit("/", 1)[0]); from comun import cargar_ordenes, medir, imprimir
+URL = "http://127.0.0.1:8080/v1/chat/completions"
+TOOLS = json.load(open(__file__.rsplit("/", 1)[0] + "/tools_coramo.json"))
+SYSTEM = ("Eres CORAMO, un robot humanoide. Recibes una orden hablada en español y respondes "
+          "SIEMPRE con exactamente una llamada a herramienta. Si la orden no mueve nada, usa responder.")
+def pedir(item):
+    _, texto, _ = item
+    r = requests.post(URL, json={"model": "x", "messages": [{"role": "system", "content": SYSTEM}, {"role": "user", "content": texto}],
+                                 "tools": TOOLS, "tool_choice": "required", "temperature": 0, "max_tokens": 80}, timeout=60).json()
+    tc = r["choices"][0]["message"].get("tool_calls") or []
+    return tc[0]["function"]["name"] if tc else "(sin tool)"
+p50, p95, res = medir(pedir, cargar_ordenes())
+aciertos = sum(1 for (_, _, esperado), _, obtenido in res if esperado == obtenido)
+imprimir("LLM local Qwen3-8B", p50, p95, f"| acierto {aciertos}/30")
+for (i, t, e), dt, o in res:
+    if e != o: print(f"  fallo {i:02d}: {t} -> esperado {e}, obtuvo {o}")
+EOT
+~/venvs/bench/bin/python ~/coramo/tools/bench/bench_llm_local.py'
+```
+Expected: `LLM local Qwen3-8B: p50 0.3x-0.5x s | p95 < 0.8 s | acierto >= 27/30`. Resultado 2026-09-20: `p50 0.35 s | p95 0.68 s | acierto 29/30` (falló "coramo alto ahí" → brazo). Cada fallo se lista para revisar el system prompt después (en el subproyecto A, no aquí).
+
+- [x] **Step 5: Commit**
+
+```bash
+ssh coramo 'cd ~/coramo && git add tools && git -c user.name="Felipe Ballesteros" -c user.email="felipe1024@gmail.com" commit -m "bench: LLM local Qwen3-8B con tools en llama-server"'
+```
+
+---
+
+### Task 8: Backends en nube (STT y TTS de OpenAI; LLM de OpenAI y DeepSeek)
+
+**Files:**
+- Create: `~/.config/coramo/env` (Xeon, fuera del repo), `tools/bench/bench_nube.py`
+
+**Interfaces:**
+- Consumes: `tools_coramo.json`, `~/datos/ordenes/NN.wav`, `comun`.
+- Produces: p50/p95 por backend en nube, acierto de tool, costo por orden.
+
+- [x] **Step 1: Claves de API (Felipe pega las suyas)**
+
+```bash
+ssh coramo 'mkdir -p ~/.config/coramo && chmod 700 ~/.config/coramo && cat > ~/.config/coramo/env <<EOT
+export OPENAI_API_KEY=sk-...
+export DEEPSEEK_API_KEY=sk-...
+export OPENAI_CHAT_MODELS=gpt-5.5
+EOT
+chmod 600 ~/.config/coramo/env && ls -la ~/.config/coramo/env'
+```
+Expected: `-rw------- ... env`. (Editar el archivo con las claves reales antes del paso 3.)
+
+- [x] **Step 2: Script de benchmark en nube**
+
+```bash
+ssh coramo 'cat > ~/coramo/tools/bench/bench_nube.py <<EOT
+"""Latencia de STT/TTS de OpenAI y de Claude con tool obligatoria. venv: ~/venvs/bench
+Uso: source ~/.config/coramo/env && python bench_nube.py"""
+import json, sys, time
+from openai import OpenAI
+from anthropic import Anthropic
+sys.path.insert(0, __file__.rsplit("/", 1)[0]); from comun import cargar_ordenes, medir, imprimir, DATOS
+TOOLS_OAI = json.load(open(__file__.rsplit("/", 1)[0] + "/tools_coramo.json"))
+# mismas tools en formato Anthropic (input_schema en vez de parameters), estrictas
+TOOLS_ANT = [{"name": t["function"]["name"], "description": t["function"]["description"],
+              "input_schema": {**t["function"]["parameters"], "required": t["function"]["parameters"].get("required", [])},
+              "strict": True} for t in TOOLS_OAI]
+SYSTEM = ("Eres CORAMO, un robot humanoide. Recibes una orden hablada en español y respondes "
+          "SIEMPRE con exactamente una llamada a herramienta. Si la orden no mueve nada, usa responder.")
+oai, ant = OpenAI(), Anthropic()
+ordenes = cargar_ordenes()
+
+def stt(item):
+    i, _, _ = item
+    with open(DATOS / f"{i:02d}.wav", "rb") as f:
+        return oai.audio.transcriptions.create(model="gpt-4o-mini-transcribe", file=f, language="es").text
+p50, p95, _ = medir(stt, ordenes); imprimir("STT nube gpt-4o-mini-transcribe", p50, p95)
+
+def tts_primer_byte(item):
+    _, texto, _ = item
+    with oai.audio.speech.with_streaming_response.create(model="gpt-4o-mini-tts", voice="coral", input=texto, response_format="pcm") as r:
+        for _chunk in r.iter_bytes(chunk_size=4096):
+            return 1
+p50, p95, _ = medir(tts_primer_byte, ordenes); imprimir("TTS nube gpt-4o-mini-tts (primer byte)", p50, p95)
+
+def claude(modelo, extra):
+    uso = {"in": 0, "out": 0, "cache": 0}
+    def pedir(item):
+        _, texto, _ = item
+        r = ant.messages.create(model=modelo, max_tokens=200,
+                                system=[{"type": "text", "text": SYSTEM, "cache_control": {"type": "ephemeral"}}],
+                                tools=TOOLS_ANT, tool_choice={"type": "any"},
+                                messages=[{"role": "user", "content": texto}], **extra)
+        uso["in"] += r.usage.input_tokens; uso["out"] += r.usage.output_tokens
+        uso["cache"] += getattr(r.usage, "cache_read_input_tokens", 0) or 0
+        for b in r.content:
+            if b.type == "tool_use":
+                return b.name
+        return "(sin tool)"
+    p50, p95, res = medir(pedir, ordenes)
+    ac = sum(1 for (_, _, e), _, o in res if e == o)
+    imprimir(f"LLM nube {modelo}", p50, p95, f"| acierto {ac}/30 | tokens in {uso['in']} (cache {uso['cache']}) out {uso['out']}")
+
+claude("claude-haiku-4-5", {})
+claude("claude-sonnet-5", {"thinking": {"type": "disabled"}})
+EOT
+echo listo'
+```
+
+- [x] **Step 3: Ejecutar**
+
+```bash
+ssh coramo 'source ~/.config/coramo/env && ~/venvs/bench/bin/python ~/coramo/tools/bench/bench_nube.py'
+```
+Resultado 2026-09-20: ver `docs/mediciones/2026-09-20-hito0.md` (STT nube 0,60 s; TTS nube 0,62 s; gpt-5.5 1,17 s 30/30; gpt-5-mini 0,80 s 26/30; gpt-5-nano 0,85 s 27/30; deepseek-flash 1,00 s 30/30; deepseek-v4-pro 1,47 s 30/30). Las claves estaban cruzadas al principio (formato `sk-proj-` = OpenAI). Expected: cuatro líneas de resultado. Referencias para juzgar: STT nube p50 típicamente 0,5 a 1,5 s (local: 0,16); TTS nube primer byte 0,3 a 0,8 s (local: 0,13); LLM en nube p50 0,5 a 1,5 s con acierto ≥ 28/30. Decisión de Felipe (2026-09-20): el LLM en nube se elige entre **OpenAI (ChatGPT) y DeepSeek**, no Claude. Modelos de OpenAI a medir en `OPENAI_CHAT_MODELS` (coma-separados; el repo InMoov usa `gpt-5.5`); DeepSeek `deepseek-chat` si hay `DEEPSEEK_API_KEY`. Costo por orden = tokens × precio vigente del proveedor (anotar el precio consultado ese día).
+
+- [x] **Step 4: Commit (sin claves)**
+
+```bash
+ssh coramo 'cd ~/coramo && git status --short | grep -q env && echo "OJO: no commitear claves" || (git add tools && git -c user.name="Felipe Ballesteros" -c user.email="felipe1024@gmail.com" commit -m "bench: backends en nube (OpenAI STT/TTS, Claude Haiku 4.5 y Sonnet 5)")'
+```
+
+---
+
+### Task 9: Detector de personas en la 4070
+
+**Files:**
+- Create: `tools/bench/bench_vision.py`
+
+**Interfaces:**
+- Produces: FPS y latencia por cuadro de YOLO11n a 640×480 en CUDA.
+
+- [x] **Step 1: Entorno y script**
+
+```bash
+ssh coramo 'export PATH=$HOME/.local/bin:$PATH; uv venv ~/venvs/vision --python 3.12 -q && uv pip install --python ~/venvs/vision/bin/python -q ultralytics && cat > ~/coramo/tools/bench/bench_vision.py <<EOT
+"""FPS de YOLO11n (personas) en CUDA sobre un cuadro de 640x480. venv: ~/venvs/vision"""
+import time, numpy as np, cv2
+from ultralytics import YOLO
+m = YOLO("yolo11n.pt")
+img = cv2.resize(cv2.imread(str(__import__("ultralytics").utils.ASSETS / "bus.jpg")), (640, 480))
+for _ in range(10): m.predict(img, device=0, imgsz=640, classes=[0], verbose=False)  # calentamiento
+N = 200; t0 = time.perf_counter()
+for _ in range(N): r = m.predict(img, device=0, imgsz=640, classes=[0], verbose=False)
+dt = (time.perf_counter() - t0) / N
+print(f"YOLO11n 640x480 CUDA: {1/dt:.0f} FPS | {dt*1000:.1f} ms/cuadro | personas detectadas: {len(r[0].boxes)}")
+EOT
+~/venvs/vision/bin/python ~/coramo/tools/bench/bench_vision.py'
+```
+Expected: `YOLO11n 640x480 CUDA: > 100 FPS | < 10 ms/cuadro | personas detectadas: 4` (hay 4 personas en bus.jpg). El objetivo del spec (15 FPS, < 100 ms) queda cubierto con margen. Resultado 2026-09-20: `46 FPS | 21.8 ms/cuadro | personas detectadas: 4` (la sobrecarga de `predict` por llamada domina; cumple el objetivo con 3× de margen).
+
+- [x] **Step 2: Commit**
+
+```bash
+ssh coramo 'cd ~/coramo && git add tools && git -c user.name="Felipe Ballesteros" -c user.email="felipe1024@gmail.com" commit -m "bench: detector de personas YOLO11n en CUDA"'
+```
+
+---
+
+### Task 10: ROS 2 Lyrical Luth en el Xeon con Discovery Server y Foxglove
+
+**Files:**
+- Create (Xeon): `/etc/systemd/system/fastdds-discovery.service`, `/etc/profile.d/coramo-ros.sh`
+- Modify: `docs/instalacion/xeon.md` (sección "ROS 2")
+
+**Interfaces:**
+- Produces: `ros2` funcional en Bash de login; Discovery Server en `192.168.1.90:11811`; `foxglove_bridge` en el puerto 8765; variable `ROS_DISCOVERY_SERVER` y `RMW_IMPLEMENTATION=rmw_fastrtps_cpp` para todos los nodos.
+
+- [x] **Step 1: Repositorio de ROS 2 e instalación**
+
+```bash
+ssh coramo "echo coramo123 | sudo -S -p '' apt-get install -y -qq software-properties-common curl && echo coramo123 | sudo -S -p '' add-apt-repository -y universe >/dev/null && V=\$(curl -s https://api.github.com/repos/ros-infrastructure/ros-apt-source/releases/latest | grep -F tag_name | awk -F'\"' '{print \$4}') && curl -sL -o /tmp/ros2-apt-source.deb \"https://github.com/ros-infrastructure/ros-apt-source/releases/download/\${V}/ros2-apt-source_\${V}.\$(. /etc/os-release && echo \$VERSION_CODENAME)_all.deb\" && echo coramo123 | sudo -S -p '' dpkg -i /tmp/ros2-apt-source.deb && echo coramo123 | sudo -S -p '' apt-get update -qq && echo coramo123 | sudo -S -p '' apt-get install -y -qq ros-lyrical-ros-base ros-dev-tools ros-lyrical-rmw-fastrtps-cpp ros-lyrical-foxglove-bridge ros-lyrical-demo-nodes-cpp && ls /opt/ros"
+```
+Expected: `lyrical`. Resultado 2026-09-20: ros-apt-source 1.3.0, 204 paquetes `ros-lyrical-*`, ros-base 0.13.0.
+
+- [x] **Step 2: Entorno de ROS para todas las sesiones**
+
+```bash
+ssh coramo "printf 'source /opt/ros/lyrical/setup.bash\nexport RMW_IMPLEMENTATION=rmw_fastrtps_cpp\nexport ROS_DISCOVERY_SERVER=192.168.1.90:11811\nexport ROS_DOMAIN_ID=7\n' > /tmp/coramo.tmp && echo coramo123 | sudo -S -p '' install -m 644 /tmp/coramo.tmp /etc/profile.d/coramo-ros.sh && rm -f /tmp/coramo.tmp; grep -q coramo-ros ~/.bashrc || echo 'source /etc/profile.d/coramo-ros.sh' >> ~/.bashrc; bash -lc 'ros2 doctor --report 2>/dev/null | grep -iE \"middleware|distribution\"'"
+```
+Expected: `distribution name : lyrical` y `middleware name : rmw_fastrtps_cpp`. Resultado 2026-09-20: ambos confirmados; `ROS_DISCOVERY_SERVER=192.168.1.103:11811` mientras el Xeon siga por WiFi (reservar la IP en el router).
+
+- [x] **Step 3: Discovery Server como servicio**
+
+```bash
+ssh coramo "printf '[Unit]\nDescription=Fast DDS Discovery Server (CORAMO)\nAfter=network-online.target\nWants=network-online.target\n\n[Service]\nExecStart=/bin/bash -lc \"source /opt/ros/lyrical/setup.bash && exec fastdds discovery -i 0 -l 192.168.1.90 -p 11811\"\nRestart=always\nRestartSec=3\nUser=coramo\n\n[Install]\nWantedBy=multi-user.target\n' > /tmp/coramo.tmp && echo coramo123 | sudo -S -p '' install -m 644 /tmp/coramo.tmp /etc/systemd/system/fastdds-discovery.service && rm -f /tmp/coramo.tmp; echo coramo123 | sudo -S -p '' systemctl daemon-reload; echo coramo123 | sudo -S -p '' systemctl enable --now fastdds-discovery; sleep 2; systemctl is-active fastdds-discovery; ss -lunp | grep -c 11811"
+```
+Expected: `active` y `1`. Resultado 2026-09-20: `active`, escucha en 0.0.0.0:11811 (todas las interfaces, para que sirva por WiFi y por cable).
+
+- [x] **Step 4: Prueba talker/listener a través del Discovery Server**
+
+```bash
+ssh coramo "bash -lc '(timeout 8 ros2 run demo_nodes_cpp talker >/dev/null 2>&1 &); timeout 8 ros2 run demo_nodes_cpp listener 2>&1 | grep -c \"I heard\"'"
+```
+Expected: un número `>= 3`. Resultado 2026-09-20: `6`.
+
+- [x] **Step 5: foxglove_bridge y conexión desde Windows**
+
+```bash
+ssh coramo "bash -lc '(nohup ros2 run foxglove_bridge foxglove_bridge --ros-args -p port:=8765 > /tmp/foxglove.log 2>&1 &); sleep 3; ss -ltnp | grep -c 8765'"
+```
+Expected: `1`. En Windows, abrir Foxglove Studio → Open connection → `ws://192.168.1.103:8765` (o la IP del Xeon); debe listar `/rosout` y `/parameter_events`. Resultado 2026-09-20: puente arriba anunciando `/rosout` y `/parameter_events`; puerto 8765 alcanzable desde WSL. Lanzado a mano; pasa a servicio/launch en el subproyecto A.
+
+- [ ] **Step 6: Documentar y commit**
+
+```bash
+ssh coramo 'cat >> ~/coramo/docs/instalacion/xeon.md <<EOT
+
+## ROS 2
+- Lyrical Luth (ros-lyrical-ros-base, ros-dev-tools, rmw-fastrtps-cpp, foxglove-bridge, demo-nodes-cpp) desde el repo ros2-apt-source.
+- /etc/profile.d/coramo-ros.sh: setup.bash, RMW_IMPLEMENTATION=rmw_fastrtps_cpp, ROS_DISCOVERY_SERVER=192.168.1.90:11811, ROS_DOMAIN_ID=7.
+- Servicio fastdds-discovery.service (puerto UDP 11811). talker/listener OK. foxglove_bridge en 8765 (lanzado a mano por ahora; en el subproyecto A pasa a launch).
+EOT
+cd ~/coramo && git add docs && git -c user.name="Felipe Ballesteros" -c user.email="felipe1024@gmail.com" commit -m "docs(xeon): ROS 2 Lyrical con Discovery Server y Foxglove"'
+```
+
+---
+
+### Task 11: Cabeza RPi5 con Ubuntu 26.04 en el SSD, Lyrical y las dos cámaras
+
+**Files:**
+- Create: `head/README.md`, `head/config.txt.snippet`, `head/head_cameras.launch.py`, `head/head-cameras.service` (ya en el repo), `docs/instalacion/cabeza.md`
+
+**Interfaces:**
+- Produces: RPi5 con IP fija publicando `/head/cam_left/image_raw/compressed` y `/head/cam_right/image_raw/compressed` a 640×480 y 15 FPS, visibles desde el Xeon.
+
+#### 11.A Arranque desde el SSD del shield M.2
+
+**Inventario real (2026-09-20, por SSH a `coramo@192.168.1.104`, hostname `cabeza`):**
+
+| Elemento | Estado |
+|---|---|
+| Placa | Raspberry Pi 5 Model B Rev 1.0, Ubuntu 26.04.1, kernel 7.0.0-1017-raspi |
+| Shield M.2 | **Sin conmutador PCIe.** El SSD cuelga directo del puente del BCM2712 (`0001:01:00.0 MAXIO MAP1202`). No aplica la restricción del ASM1184e. |
+| SSD | `nvme0n1`, 238,5 GB, NXM-256 2242 (DRAM-less). **Vacío, sin tabla de particiones.** |
+| microSD | `mmcblk0`, 233 GB; raíz actual en `mmcblk0p2` (2,8 GB usados) |
+| Lectura medida | **SSD 432 MB/s contra microSD 82,6 MB/s: 5,2× más rápido** |
+| Bootloader | 2025-12-08, `BOOT_ORDER=0xf461` (microSD primero, luego NVMe) |
+| Arranque de Ubuntu | `root=LABEL=writable` en `/boot/firmware/current/cmdline.txt`; fstab por `LABEL`. **Riesgo: al clonar, las dos unidades tendrían la etiqueta `writable` y el arranque sería ambiguo.** Por eso el SSD se referencia por `PARTUUID` y lleva etiquetas propias (`SSDBOOT`, `writable-ssd`). |
+| Red | `wlan0` con 192.168.1.104 por DHCP; `eth0` y el USB Realtek `enxf8ce21123f7b`, ambos sin cable |
+| Cámaras | **Las dos detectadas y capturando**: dos OV5647 (Camera Module v1, 5 MP), una por puerto CSI (`i2c@80000` y `i2c@88000`), 24 a 29 fps en prueba. `camera_auto_detect=1` basta; no hace falta `config.txt.snippet`. |
+
+- [x] **Step 1: Ejecutar la migración al SSD** — hecho el 2026-09-20 por Felipe (el clasificador bloquea formatear discos, así que lo ejecutó él con `ssh cabeza 'bash /tmp/a_ssd.sh'`).
+
+- [x] **Step 2: Reiniciar y comprobar que arrancó del SSD** — hecho. Resultado: raíz en `/dev/nvme0n1p2`, `/boot/firmware` en `/dev/nvme0n1p1`, arranque en ~50 s, lectura 434 MB/s. La microSD queda montada en ningún sitio, intacta como rescate.
+
+**Estado del arranque tras la migración (sin ambigüedad en ninguna dirección):**
+
+| Unidad | Etiquetas | Cómo arranca |
+|---|---|---|
+| SSD (en uso) | `SSDBOOT` / `writable-ssd` | `root=PARTUUID=d6b594f8-02` |
+| microSD (rescate) | `system-boot` / `writable` | `root=LABEL=writable`, que solo existe en ella |
+
+`BOOT_ORDER=0xf416` con `PCIE_PROBE=1`: prueba NVMe, luego microSD, luego USB.
+
+**Riesgo a vigilar:** el sistema no tiene `flash-kernel` ni `/etc/default/flash-kernel`, pero `linux-firmware-raspi` gestiona `/boot/firmware/current/` con el esquema A/B (`tryboot_a_b=1`). Si una actualización de kernel llegara a regenerar `current/cmdline.txt` con `root=LABEL=writable`, apuntaría a la microSD en vez del SSD. Por eso conviene **no dejar la microSD puesta**: así el fallo sería visible en vez de arrancar en silencio el sistema viejo. Tras cada actualización de kernel, comprobar `findmnt -n -o SOURCE /`.
 
 #### 11.B Red, cámaras y ROS
 
