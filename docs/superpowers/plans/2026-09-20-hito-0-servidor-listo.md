@@ -225,7 +225,11 @@ PY'
 ```
 Expected: criterio principal **relación señal a ruido (voz − fondo) ≥ 20 dB** y pico por debajo de −3 dBFS (sin recorte); el nivel absoluto se corrige por software en el nodo `audio` del subproyecto A, la SNR no.
 
-Medido el 2026-09-20 con el micrófono analógico actual (Rear Mic, boost 0 dB, fuente 0,35): voz a 1 m −36 dBFS y a 30 cm −34 dBFS, fondo −46 a −49 dBFS, pico −19 dBFS, sin recortes → **SNR de solo 10 a 14 dB**, insuficiente para el criterio. La distancia casi no cambió el resultado, señal de un micrófono poco sensible. Subir el boost no sirve: con +10 dB el fondo pasa a −15 dBFS (agrega ruido, no señal). Acciones, en este orden:
+Medido el 2026-09-20 (Rear Mic, boost 0 dB, fuente 0,35) con dos micrófonos analógicos:
+- Micrófono 1: voz a 1 m −36 dBFS y a 30 cm −34 dBFS, fondo −46 a −49 dBFS → SNR de 10 a 14 dB. Descartado.
+- **Micrófono 2 (el que queda instalado):** voz a 30 cm −22 dBFS, fondo −42 dBFS, pico −6,6 dBFS, sin recortes → **SNR 19–20 dB**, en el límite del criterio pero utilizable para órdenes cortas. Con la fuente en 0,40 la voz sube a −19 dBFS pero el pico llega a −1 dBFS (sin margen): por eso queda en 0,35.
+
+Subir el boost no sirve con ninguno: con +10 dB el fondo pasa a −15 dBFS (agrega ruido, no señal). Si más adelante hace falta más SNR, en este orden:
 1. Probar el mismo micrófono en el adaptador USB **PCM2902** heredado de v1 (tiene su propio preamplificador y ADC): conectar, verificar que aparece en `arecord -l` como `USB Audio`, hacerlo fuente predeterminada con `wpctl set-default <id>` y repetir los pasos 2 y 3.
 2. Si sigue bajo 20 dB de SNR, cambiar el micrófono por uno USB con procesamiento propio (tipo conferencia) o acercarlo a la boca del interlocutor en el diseño de la cabeza.
 3. Mientras tanto, la compuerta de nivel del nodo `audio` (spec §6.1) se define **relativa al fondo medido** (fondo + 6 dB), no fija en −45 dBFS, o bloquearía la voz.

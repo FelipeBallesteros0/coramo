@@ -144,9 +144,11 @@ por visión con agarre de objetos, control de impedancia.
   Xeon (jack rosado trasero y salida verde; conectados el 2026-09-20 y
   verificados con prueba acústica), no en la cabeza, para mantener la latencia
   de voz en una sola máquina. Ganancia calibrada por PipeWire (fuente 0,35,
-  `Rear Mic Boost` en 0 dB: con boost el fondo satura). Medido: voz a 30 cm
-  −34 dBFS sobre un fondo de −48 dBFS, SNR de 14 dB, **insuficiente**; primera
-  alternativa a probar, el adaptador USB PCM2902 de v1 (plan del hito 0, tarea 1c). Se puede mover a la
+  `Rear Mic Boost` en 0 dB: con boost el fondo satura). Medido con el segundo
+  micrófono probado (el instalado): voz a 30 cm −22 dBFS sobre un fondo de
+  −42 dBFS, SNR 19–20 dB, pico −6,6 dBFS sin recortes: utilizable para órdenes
+  cortas. Si hace falta más SNR: adaptador USB PCM2902 de v1 o micrófono USB
+  (plan del hito 0, tarea 1c). Se puede mover a la
   cabeza o a USB en una versión posterior si la distancia lo exige.
 - Red: la placa **no expone ninguna controladora Ethernet PCI** (no aparece en
   `lspci`). Hay dos adaptadores USB heredados de v1: WiFi MediaTek MT7921U (hoy
