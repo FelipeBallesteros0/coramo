@@ -25,3 +25,10 @@ Cada sección de abajo la agrega la tarea del plan que la ejecuta.
 - Mutter elegía la 4070 como GPU primaria (270 MiB de gnome-shell) aunque el monitor estuviera en la RX 580. Arreglo por software, sin tocar la BIOS: /etc/udev/rules.d/61-mutter-primary-gpu.rules etiqueta la tarjeta 0000:02:00.0 con mutter-device-preferred-primary.
 - Tras reiniciar: la 4070 queda con 13 MiB usados; gnome-shell solo la abre con 3 MiB (sin renderizar). Criterio cumplido.
 - La sesión gráfica de coramo arranca sola al encender.
+
+## Herramientas (tarea 3, 2026-09-20)
+- apt: build-essential, cmake 4.2.3, git 2.53, git-lfs, curl, wget, htop, nvtop, espeak-ng 1.52, ffmpeg, libsndfile1, alsa-utils, python3-venv, chrony (activo), nvidia-cuda-toolkit 12.4 (nvcc en /usr/bin; el archivo de 26.04 trae 12.4, suficiente para compilar llama.cpp con CUDA sobre el driver 595).
+- uv 0.12.17 en ~/.local/bin (PATH agregado a ~/.bashrc); Python 3.12.14 gestionado por uv. Los venvs viven en ~/venvs/<nombre>.
+- ~/venvs/cuda-check: torch 2.14.0+cu130, torch.cuda.is_available() = True, RTX 4070 SUPER.
+- Trampas: la imagen de 26.04 no traía curl ni git; el instalador de uv responde 403 a urllib de Python (usar curl).
+- Disco tras instalar: 28 GB usados de 218.
