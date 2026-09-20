@@ -428,7 +428,7 @@ cd ~/coramo && git add docs tools && git -c user.name="Felipe Ballesteros" -c us
 **Interfaces:**
 - Produces: `ordenes.txt` (30 líneas, una orden por línea, con la tool esperada separada por `|`); 30 WAV de 16 kHz mono en `~/datos/ordenes/NN.wav`; función `medir(fn, n) -> (p50, p95)` reutilizada en todos los benchmarks vía `tools/bench/comun.py`.
 
-- [ ] **Step 1: Escribir el set de órdenes**
+- [x] **Step 1: Escribir el set de órdenes**
 
 ```bash
 ssh coramo 'cat > ~/coramo/tools/bench/ordenes.txt <<EOT
@@ -467,7 +467,7 @@ wc -l ~/coramo/tools/bench/ordenes.txt'
 ```
 Expected: `30`.
 
-- [ ] **Step 2: Módulo común de medición**
+- [x] **Step 2: Módulo común de medición**
 
 ```bash
 ssh coramo 'cat > ~/coramo/tools/bench/comun.py <<EOT
@@ -505,7 +505,7 @@ def imprimir(nombre, p50, p95, extra=""):
 EOT'
 ```
 
-- [ ] **Step 3: Entorno TTS y script de benchmark**
+- [x] **Step 3: Entorno TTS y script de benchmark**
 
 ```bash
 ssh coramo 'export PATH=$HOME/.local/bin:$PATH; uv venv ~/venvs/tts --python 3.12 -q && uv pip install --python ~/venvs/tts/bin/python -q kokoro soundfile numpy && cat > ~/coramo/tools/bench/bench_tts.py <<EOT
@@ -524,9 +524,9 @@ imprimir("TTS local Kokoro " + VOZ, p50, p95)
 EOT
 ~/venvs/tts/bin/python ~/coramo/tools/bench/bench_tts.py'
 ```
-Expected: una línea `TTS local Kokoro ef_dora: p50 0.2x s | p95 0.3x s` (el traductor midió 0,19 s). Si sale `> 0.6 s`, está en CPU: revisar que `torch.cuda.is_available()` sea `True` en ese venv.
+Expected: una línea `TTS local Kokoro ef_dora: p50 0.2x s | p95 0.3x s` (el traductor midió 0,19 s). Resultado 2026-09-20: `p50 0.13 s | p95 0.14 s`. Si sale `> 0.6 s`, está en CPU: revisar que `torch.cuda.is_available()` sea `True` en ese venv.
 
-- [ ] **Step 4: Generar los 30 WAV del set (voz sintética, 16 kHz mono)**
+- [x] **Step 4: Generar los 30 WAV del set (voz sintética, 16 kHz mono)**
 
 ```bash
 ssh coramo 'cat > ~/coramo/tools/bench/gen_ordenes.py <<EOT
@@ -546,9 +546,9 @@ print("generados", len(list(DATOS.glob("*.wav"))))
 EOT
 ~/venvs/tts/bin/python ~/coramo/tools/bench/gen_ordenes.py'
 ```
-Expected: `generados 30`. (Estas voces sintéticas sirven para el benchmark; el set definitivo con voces reales lo pide el spec §6.4 y se graba en el subproyecto A.)
+Expected: `generados 30`. Resultado 2026-09-20: 30 WAV, 1,8 MB en `~/datos/ordenes/`. (Estas voces sintéticas sirven para el benchmark; el set definitivo con voces reales lo pide el spec §6.4 y se graba en el subproyecto A.)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 ssh coramo 'cd ~/coramo && git add tools && git -c user.name="Felipe Ballesteros" -c user.email="felipe1024@gmail.com" commit -m "bench: set de 30 órdenes, módulo común y benchmark de TTS local"'
