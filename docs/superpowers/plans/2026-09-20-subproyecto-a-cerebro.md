@@ -611,7 +611,7 @@ class SafetyNode(Node):
             self._pub.publish(msg)
             self._evento("command_sent", msg.tool)
         else:
-            self.get_logger().warn(f"comando rechazado: {razon}")
+            self.get_logger().warning(f"comando rechazado: {razon}")
             self._evento("command_rejected", razon)
 
     def _parar(self, _req, resp):
@@ -1009,7 +1009,7 @@ class TtsNode(Node):
 
     def _hablar(self, texto: str) -> None:
         if not self._ocupado.acquire(blocking=False):
-            self.get_logger().warn("ya esta hablando; se descarta la frase nueva")
+            self.get_logger().warning("ya esta hablando; se descarta la frase nueva")
             return
         try:
             r = self._voz.decir(texto)
@@ -1399,7 +1399,7 @@ class SpeechNode(Node):
             try:
                 speech_client.escuchar(self._url, self._al_evento)
             except Exception as e:
-                self.get_logger().warn(f"flujo caido, reintento en 2 s: {e}")
+                self.get_logger().warning(f"flujo caido, reintento en 2 s: {e}")
             time.sleep(2.0)
 
     def _al_evento(self, ev: dict) -> None:
