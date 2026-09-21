@@ -44,13 +44,19 @@ app = FastAPI()
 vad = load_silero_vad()
 modelo = WhisperModel("large-v3-turbo", device="cuda", compute_type="float16")
 
-_eventos: queue.Queue = queue.Queue()
+# Una cola por cliente conectado. Con una sola cola compartida cada evento
+# llegaria a un unico suscriptor: un visor de depuracion le robaria turnos al
+# cerebro sin que nada lo delate. El reparto es a todos o a ninguno.
+_suscriptores: list[queue.Queue] = []
+_reparto = threading.Lock()
 _turnos: queue.Queue = queue.Queue()
 _silenciado = threading.Event()
 
 
 def _emitir(**kw) -> None:
-    _eventos.put(kw)
+    with _reparto:
+        for cola in _suscriptores:
+            cola.put(kw)
 
 
 def _dbfs(x: np.ndarray) -> float:
@@ -89,6 +95,19 @@ def _trozos_micro():
 _siguiente = [0.0]
 
 
+_reanclar = threading.Event()
+
+
+def _reiniciar_ritmo() -> None:
+    """Olvida el horario de reproduccion tras una pausa.
+
+    Sin esto el marcapasos creeria que va atrasado y soltaria de golpe todo el
+    audio que "deberia" haber sonado durante la espera.
+    """
+    _siguiente[0] = 0.0
+    _reanclar.set()
+
+
 def _a_ritmo(trozo: np.ndarray) -> np.ndarray:
     """Espera lo necesario para entregar el trozo a la misma velocidad que el
     microfono. Sin esto el reloj de audio adelanta al de pared y las latencias
@@ -103,6 +122,12 @@ def _a_ritmo(trozo: np.ndarray) -> np.ndarray:
     return trozo
 
 
+# Silencio entre orden y orden. Cubre el cierre del turno y el tiempo que el
+# cerebro tarda en decidir, para que el silenciado por habla llegue antes de que
+# empiece a sonar la orden siguiente y no se la coma a medias.
+PAUSA_ENTRE_ORDENES = SILENCIO_FIN_S + 2.0
+
+
 def _trozos_archivos(carpeta: str):
     """Reproduce los WAV de la carpeta, separados por silencio.
 
@@ -113,12 +138,19 @@ def _trozos_archivos(carpeta: str):
     while REPETIR == 0 or vuelta < REPETIR:
         vuelta += 1
         for ruta in sorted(Path(carpeta).glob("*.wav")):
+            # Esperar a que el robot termine de hablar antes de soltar la
+            # siguiente orden. Mientras habla, la captura descarta el audio para
+            # no escucharse a si misma; una persona espera la respuesta, y sin
+            # esto la grabacion le habla encima y esa orden se pierde.
+            while _silenciado.is_set():
+                time.sleep(0.05)
+                _reiniciar_ritmo()
             with wave.open(str(ruta)) as w:
                 datos = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2")
             muestras = datos.astype(np.float32) / 32768.0
             for i in range(0, len(muestras) - MUESTRAS_POR_TROZO, MUESTRAS_POR_TROZO):
                 yield _a_ritmo(muestras[i:i + MUESTRAS_POR_TROZO])
-            for _ in range(int(FRECUENCIA * (SILENCIO_FIN_S + 0.5)) // MUESTRAS_POR_TROZO):
+            for _ in range(int(FRECUENCIA * PAUSA_ENTRE_ORDENES) // MUESTRAS_POR_TROZO):
                 yield _a_ritmo(np.zeros(MUESTRAS_POR_TROZO, dtype=np.float32))
 
 
@@ -155,6 +187,12 @@ def _bucle() -> None:
     previos: deque = deque(maxlen=PREVIOS_TROZOS)
     for trozo in trozos:
         muestras += len(trozo)
+        if _reanclar.is_set():
+            # La fuente estuvo detenida un rato de reloj de pared que no produjo
+            # muestras. Sin reanclar, el reloj de audio se quedaria atras y toda
+            # latencia medida contra el cargaria con esa pausa.
+            _reanclar.clear()
+            t0 = time.time() - muestras / FRECUENCIA
         if _silenciado.is_set():
             dentro, buffer = False, []
             previos.clear()
@@ -200,7 +238,7 @@ def arrancar() -> None:
 @app.get("/health")
 def health():
     return {"ok": True, "fuente": FUENTE, "silenciado": _silenciado.is_set(),
-            "modelo": "large-v3-turbo"}
+            "modelo": "large-v3-turbo", "suscriptores": len(_suscriptores)}
 
 
 @app.post("/mute")
@@ -217,12 +255,22 @@ def unmute():
 
 @app.get("/events")
 async def events():
+    propia: queue.Queue = queue.Queue()
+    with _reparto:
+        _suscriptores.append(propia)
+
     async def generar():
-        while True:
-            try:
-                ev = _eventos.get_nowait()
-            except queue.Empty:
-                await asyncio.sleep(0.02)
-                continue
-            yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+        try:
+            while True:
+                try:
+                    ev = propia.get_nowait()
+                except queue.Empty:
+                    await asyncio.sleep(0.02)
+                    continue
+                yield f"data: {json.dumps(ev, ensure_ascii=False)}\n\n"
+        finally:
+            with _reparto:
+                if propia in _suscriptores:
+                    _suscriptores.remove(propia)
+
     return StreamingResponse(generar(), media_type="text/event-stream")

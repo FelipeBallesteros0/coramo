@@ -68,7 +68,19 @@ Objetivo medido: **≤ 1,5 s** desde que el usuario deja de hablar hasta que el 
 
 ## Estado
 
-Hito 0 (puesta a punto del cerebro y la cabeza) casi terminado. Medido en hardware real:
+Hito 0 (puesta a punto del cerebro y la cabeza) y subproyecto A (de la voz a la acción) terminados y medidos en hardware real.
+
+**Subproyecto A, cadena completa.** Con las 30 órdenes grabadas, reproducidas a ritmo real y con el cuerpo simulado:
+
+| Tramo | p50 | p95 | Meta |
+|---|---|---|---|
+| Cierre del turno | 0,75 s | 0,79 s | 0,80 s |
+| **Del fin del habla al comando validado** | **1,09 s** | **1,27 s** | 1,50 s |
+| Hasta pedir la respuesta hablada | 1,21 s | 1,52 s | 1,60 s |
+
+Las 30 órdenes se transcriben, el acierto de herramienta es de 27 sobre 28, el robot no se activa con su propia voz en veinte respuestas largas seguidas, y al tumbar cada servidor por separado lo que no depende de él sigue funcionando. Detalle y errores encontrados en [`docs/mediciones`](docs/mediciones).
+
+**Componentes por separado:**
 
 | Etapa | Resultado |
 |---|---|
@@ -88,6 +100,7 @@ Comparado con alternativas en la nube (OpenAI, DeepSeek), lo local resultó entr
 - [`docs/mediciones`](docs/mediciones) — bitácora de números medidos, con fecha y hardware.
 - [`head`](head) — nodo de visión: lanzador de cámaras, servicio y migración al SSD.
 - [`tools/bench`](tools/bench) — scripts de medición de latencia por componente.
+- [`tools`](tools) — medición de la cadena completa y pruebas de aceptación (auto-escucha, recuperación ante caídas).
 
 ## Licencia y contacto
 
