@@ -1,0 +1,23 @@
+# Limites articulares en grados. Provisionales para la mano y la cabeza;
+# el brazo los fija el subproyecto C tras el inventario del hardware.
+articulaciones:
+  pulgar:   {min: 0, max: 180}
+  indice:   {min: 0, max: 180}
+  medio:    {min: 0, max: 180}
+  anular:   {min: 0, max: 180}
+  menique:  {min: 0, max: 180}
+  cuello_pan:  {min: -80, max: 80}
+  cuello_tilt: {min: -30, max: 40}
+gestos_mano:
+  abre:   {pulgar: 0,   indice: 0,   medio: 0,   anular: 0,   menique: 0}
+  cierra: {pulgar: 180, indice: 180, medio: 180, anular: 180, menique: 180}
+  paz:    {pulgar: 180, indice: 0,   medio: 0,   anular: 180, menique: 180}
+  ok:     {pulgar: 140, indice: 140, medio: 0,   anular: 0,   menique: 0}
+  rock:   {pulgar: 180, indice: 0,   medio: 180, anular: 180, menique: 0}
+  pulgar: {pulgar: 0,   indice: 180, medio: 180, anular: 180, menique: 180}
+poses_cabeza:
+  frente:    {cuello_pan: 0,   cuello_tilt: 0}
+  izquierda: {cuello_pan: 60,  cuello_tilt: 0}
+  derecha:   {cuello_pan: -60, cuello_tilt: 0}
+  arriba:    {cuello_pan: 0,   cuello_tilt: 35}
+  abajo:     {cuello_pan: 0,   cuello_tilt: -25}
