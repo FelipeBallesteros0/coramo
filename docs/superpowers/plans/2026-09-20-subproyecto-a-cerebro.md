@@ -1100,6 +1100,7 @@ import asyncio
 import json
 import os
 import queue
+from collections import deque
 import subprocess
 import threading
 import time
@@ -1118,6 +1119,7 @@ FRECUENCIA = 16000
 MUESTRAS_POR_TROZO = 512                 # 32 ms, lo que exige Silero
 SILENCIO_FIN_S = float(os.environ.get("CORAMO_SILENCIO_S", "0.6"))
 HABLA_MINIMA_S = 0.20
+PREVIOS_TROZOS = 10            # 320 ms de audio previo al inicio del habla
 TURNO_MAXIMO_S = 15.0
 COMPUERTA_DBFS = float(os.environ.get("CORAMO_COMPUERTA_DBFS", "-45"))
 FUENTE = os.environ.get("CORAMO_FUENTE", "mic")
@@ -1186,18 +1188,36 @@ def _bucle() -> None:
     buffer: list[np.ndarray] = []
     ultimo_habla = 0.0
     inicio = 0.0
+    # Reloj de audio: avanza con las muestras, no con el reloj de pared. Con el
+    # microfono coincide con el tiempo real porque arecord entrega a 16 kHz; con
+    # archivos hace que la deteccion se comporte igual, y las pruebas sean
+    # deterministas en vez de depender de lo rapido que vaya la maquina.
+    t0 = time.time()
+    muestras = 0
+    # Cola con el audio inmediatamente anterior. Silero marca el inicio cuando
+    # ya hay voz clara, asi que sin esto se pierde el ataque de la primera
+    # palabra: "coramo cierra la mano" se transcribia "Decoramos Sierra La Mano".
+    previos: deque = deque(maxlen=PREVIOS_TROZOS)
     for trozo in trozos:
+        muestras += len(trozo)
         if _silenciado.is_set():
             dentro, buffer = False, []
+            previos.clear()
             continue
-        ahora = time.time()
+        ahora = t0 + muestras / FRECUENCIA
+        if not dentro:
+            previos.append(trozo)
         if _dbfs(trozo) < COMPUERTA_DBFS and not dentro:
             continue
         prob = float(vad(torch.from_numpy(trozo), FRECUENCIA).item())
         hay_voz = prob > 0.5
         if hay_voz and not dentro:
-            dentro, buffer, inicio, ultimo_habla = True, [trozo], ahora, ahora
-            _emitir(type="speech_start", t=ahora)
+            dentro = True
+            buffer = list(previos)
+            previos.clear()
+            inicio = ahora - len(buffer) * MUESTRAS_POR_TROZO / FRECUENCIA
+            ultimo_habla = ahora
+            _emitir(type="speech_start", t=inicio)
         elif dentro:
             buffer.append(trozo)
             if hay_voz:
@@ -1211,13 +1231,13 @@ def _bucle() -> None:
                 if ultimo_habla - inicio < HABLA_MINIMA_S:
                     buffer = []
                     continue
-                muestras = np.concatenate(buffer)
+                turno = np.concatenate(buffer)
                 buffer = []
-                segs, _info = modelo.transcribe(muestras, language="es", beam_size=1,
+                segs, _info = modelo.transcribe(turno, language="es", beam_size=1,
                                                 vad_filter=False)
                 texto = " ".join(s.text.strip() for s in segs).strip()
                 _emitir(type="transcript", text=texto, t_speech_end=t_fin,
-                        t_emitted=time.time(), confidence=1.0, wav=_guardar(muestras))
+                        t_emitted=time.time(), confidence=1.0, wav=_guardar(turno))
 
 
 @app.on_event("startup")
