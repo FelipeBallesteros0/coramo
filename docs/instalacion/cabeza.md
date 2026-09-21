@@ -81,6 +81,18 @@ Descartado antes de llegar aquí: el cable (probados dos), la velocidad (falla i
 
 ## ROS 2 y cámaras
 
+```mermaid
+flowchart LR
+    C0["Cámara<br/>izquierda"] --> N1["camera_ros<br/>cam_left"]
+    C1["Cámara<br/>derecha"] --> N2["camera_ros<br/>cam_right"]
+    N1 --> T1["/head/cam_left/<br/>image_raw/compressed"]
+    N2 --> T2["/head/cam_right/<br/>image_raw/compressed"]
+    T1 -->|WiFi · 15 Hz| X["Xeon"]
+    T2 -->|WiFi · 15 Hz| X
+    X --- DS["Discovery Server<br/>:11811"]
+```
+
+
 - **ROS 2 Lyrical Luth** desde `ros2-apt-source` (207 paquetes): `ros-lyrical-ros-base`, `rmw-fastrtps-cpp`, `camera-ros`, `compressed-image-transport`.
 - Entorno en `/etc/profile.d/coramo-ros.sh`: `RMW_IMPLEMENTATION=rmw_fastrtps_cpp`, `ROS_DISCOVERY_SERVER=192.168.1.103:11811` (el Xeon, por WiFi), `ROS_DOMAIN_ID=7`.
 - `chrony` con el Xeon como servidor preferido; el Xeon acepta clientes con `allow 192.168.1.0/24`.

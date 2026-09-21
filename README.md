@@ -12,13 +12,59 @@ La v1 demostró el concepto: voz a acción física, todo local, sobre una Raspbe
 
 ## Arquitectura
 
+```mermaid
+flowchart LR
+    MIC["Micrófono"] --> HABLA
+    subgraph CABEZA["Cabeza · Raspberry Pi 5"]
+        CAM["2 cámaras CSI<br/>640×480 · 15 FPS"]
+        VIS["Detección de personas"]
+    end
+    subgraph CEREBRO["Cerebro · Xeon + RTX 4070 SUPER"]
+        HABLA["Habla<br/>detección + transcripción"] --> AGENTE["Agente<br/>modelo de lenguaje<br/>con herramientas"]
+        AGENTE --> SEG["Seguridad<br/>límites · parada"]
+        AGENTE --> VOZ["Voz<br/>síntesis"]
+    end
+    subgraph CUERPO["Cuerpo · RP2350"]
+        MANO["Mano<br/>5 servos"]
+        BRAZO["Brazo<br/>motores DC + encoders"]
+        CABZ["Cabeza<br/>servos"]
+    end
+    CAM -->|WiFi| VIS
+    VIS --> AGENTE
+    VOZ --> SPK["Parlante"]
+    SEG -->|USB| MANO
+    SEG -->|USB| BRAZO
+    SEG -->|USB| CABZ
+```
+
+
 | Capa | Hardware | Software |
 |---|---|---|
 | Cerebro | Xeon E5-2697 v2, 64 GB, RTX 4070 SUPER | ROS 2 Lyrical Luth sobre Ubuntu 26.04; voz a acción con tools |
 | Cabeza | Raspberry Pi 5 con SSD NVMe y dos cámaras CSI | ROS 2 Lyrical, `camera_ros` a 15 FPS |
 | Cuerpo | RP2350 (Pico 2 W) → PCA9685 → BTS7960 y servos | Firmware C++ con watchdog, límites y parada |
 
-Voz a acción: micrófono → detección de habla → transcripción → modelo de lenguaje con herramientas acotadas → filtro de seguridad → microcontrolador. Objetivo medido: **≤ 1,5 s** desde que el usuario deja de hablar hasta que el robot se mueve.
+### De la voz a la acción
+
+```mermaid
+flowchart LR
+    A["Micrófono"] --> B["Detección<br/>de habla"]
+    B --> C["Transcripción"]
+    C --> D{"¿dice<br/>«coramo»?"}
+    D -->|no| A
+    D -->|sí| E{"¿es<br/>«detente»?"}
+    E -->|sí| P["Parada"]
+    E -->|no| F["Modelo de lenguaje<br/>elige una herramienta"]
+    F --> G{"¿qué herramienta?"}
+    G -->|mano · brazo · cabeza| H["Seguridad<br/>valida límites"]
+    G -->|responder| I["Síntesis de voz"]
+    H --> J["Cuerpo"]
+    I --> K["Parlante"]
+```
+
+El modelo de lenguaje nunca escribe directo al hardware: solo elige una herramienta de una lista cerrada, y un filtro aparte valida los límites antes de que llegue al microcontrolador. «Detente» se reconoce por texto antes de llamar al modelo, para no gastar medio segundo en la única orden donde importa.
+
+Objetivo medido: **≤ 1,5 s** desde que el usuario deja de hablar hasta que el robot se mueve.
 
 ## Estado
 

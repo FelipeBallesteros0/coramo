@@ -60,6 +60,36 @@ Esto tiene una ventaja que conviene aprovechar: la misma interfaz HTTP sirve par
 
 ## 4. Procesos y qué hace cada uno
 
+```mermaid
+flowchart TB
+    subgraph SRV["Servidores de modelo · Python 3.12 · fuera de ROS"]
+        LLM["coramo-llm :8080<br/>Qwen3-8B"]
+        SPE["coramo-speech :8091<br/>captura · VAD · Whisper"]
+        VOZ["coramo-voice :8092<br/>Kokoro"]
+    end
+    subgraph ROS["Nodos ROS 2 · Python 3.14 · solo biblioteca estándar"]
+        NS["speech"]
+        NA["agent"]
+        NT["tts"]
+        NSF["safety"]
+        NB["body_bridge"]
+        SUP["supervisor"]
+        NS -->|"/speech/text"| NA
+        NA -->|"/body/command"| NSF
+        NA -->|"/tts/say"| NT
+        NSF -->|"/body/command_safe"| NB
+    end
+    SPE -.->|eventos| NS
+    NA -.->|petición| LLM
+    NT -.->|petición| VOZ
+    NT -.->|silenciar| SPE
+    NS -.->|"/coramo/event"| SUP
+    NA -.-> SUP
+    NT -.-> SUP
+    NSF -.-> SUP
+    SUP -->|"/coramo/state"| ROS
+```
+
 ### 4.1 Servidores de modelo (Python 3.12, fuera de ROS)
 
 | Servicio | Entorno | Puerto | Qué hace |
@@ -188,16 +218,22 @@ Si algo falla, **no recorta en silencio**: rechaza el comando, emite un evento d
 
 ## 8. Estados y de dónde sale cada latencia
 
-```
-IDLE ──speech_start──► LISTENING ──speech_end──► THINKING
-  ▲                                                 │
-  │                              ┌──tool_chosen─────┤
-  │                              ▼                  ▼
-  └──── SPEAKING ◄── ACTING ◄────┘        (responder) SPEAKING
-             ▲                                       │
-             └───────────────────────────────────────┘
-
-Desde cualquier estado, «detener» o el botón → STOPPED, y solo sale con rearme explícito.
+```mermaid
+stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> LISTENING: habla detectada
+    LISTENING --> THINKING: fin del turno
+    THINKING --> ACTING: herramienta física
+    THINKING --> SPEAKING: responder
+    ACTING --> SPEAKING: la acción lleva respuesta
+    ACTING --> IDLE: acción sin voz
+    SPEAKING --> IDLE: fin del audio
+    IDLE --> STOPPED: detener
+    LISTENING --> STOPPED: detener
+    THINKING --> STOPPED: detener
+    ACTING --> STOPPED: detener
+    SPEAKING --> STOPPED: detener
+    STOPPED --> IDLE: rearme explícito
 ```
 
 El nodo `supervisor` escucha `/coramo/event` y publica el estado. Como cada evento lleva su marca de tiempo, la tabla de latencias de la tesis se obtiene restando eventos del mismo turno, sin instrumentación aparte.
@@ -277,6 +313,19 @@ Ese último criterio importa: si el servidor de voz se cae, el robot debe seguir
 ---
 
 ## 13. Orden de construcción
+
+```mermaid
+flowchart LR
+    T1["1 · mensajes<br/>y esqueleto"] --> T2["2 · herramientas<br/>y validación"]
+    T2 --> T3["3 · seguridad"]
+    T3 --> T4["4 · cuerpo<br/>simulado"]
+    T4 --> T5["5 · el robot<br/>habla"]
+    T5 --> T6["6 · el robot<br/>escucha"]
+    T6 --> T7["7 · el robot<br/>entiende"]
+    T7 --> T8["8 · medición<br/>de latencias"]
+    T8 --> T9["9 · lanzadores<br/>y servicios"]
+```
+
 
 Cada paso deja algo que se puede probar solo:
 

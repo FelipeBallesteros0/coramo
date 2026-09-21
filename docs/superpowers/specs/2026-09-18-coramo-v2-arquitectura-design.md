@@ -196,7 +196,7 @@ alimenta el URDF.
 
 ### 5.1 Repositorio y estructura
 
-```
+```text
 coramo/                       (rama main reiniciada; v1 en rama v1-rpi5, tag v1.0)
 ├── src/                      workspace ROS 2 (colcon)
 │   ├── coramo_brain/         audio, VAD, STT, agente, TTS
@@ -245,14 +245,22 @@ en `/body/command` y `/head/look_at`, nunca en `/body/command_safe`.
 
 ### 5.3 Máquina de estados
 
-```
-IDLE ──(habla detectada)──► LISTENING ──(fin de turno)──► THINKING
-  ▲                                                          │
-  │                                       ┌──────────────────┤
-  │                                       ▼                  ▼
-  └──────────────── SPEAKING ◄──── ACTING ◄──── (tool elegida)
-                       ▲                                     │
-                       └────────── (responder) ◄─────────────┘
+```mermaid
+stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> LISTENING: habla detectada
+    LISTENING --> THINKING: fin del turno
+    THINKING --> ACTING: herramienta física
+    THINKING --> SPEAKING: responder
+    ACTING --> SPEAKING: la acción lleva respuesta
+    ACTING --> IDLE: acción sin voz
+    SPEAKING --> IDLE: fin del audio
+    IDLE --> STOPPED: detener
+    LISTENING --> STOPPED: detener
+    THINKING --> STOPPED: detener
+    ACTING --> STOPPED: detener
+    SPEAKING --> STOPPED: detener
+    STOPPED --> IDLE: rearme explícito
 ```
 
 Estados: `IDLE`, `LISTENING`, `THINKING`, `ACTING`, `SPEAKING`, `STOPPED`
@@ -541,6 +549,17 @@ corriente resulta insuficiente, se reabre la decisión con datos.
 ---
 
 ## 9. Hitos y orden
+
+```mermaid
+flowchart LR
+    H0["0 · Servidor<br/>y cabeza listos"] --> A["A · Cerebro<br/>voz a acción"]
+    A --> B["B · Cuerpo<br/>mano primero"]
+    B --> D1["D básico<br/>detectar y saludar"]
+    D1 --> C["C · Brazo<br/>control y URDF"]
+    C --> D2["D completo<br/>interacción"]
+    D2 --> T["Tesis<br/>medición y defensa"]
+```
+
 
 | Hito | Contenido | Criterio de aceptación |
 |---|---|---|
