@@ -291,6 +291,8 @@ Con los tres servidores levantados, se reproducen las 30 órdenes del hito 0 y s
 
 ## 11. Cuándo está terminado
 
+**Medido el 2026-09-20** (`docs/mediciones/2026-09-20-subproyecto-a.md`): latencia total hasta la acción **1,25 s en p95**, acierto de herramienta **21/22 (95 %)**, pruebas sin robot **46 en verde**. Quedan por comprobar la auto-escucha y la recuperación al matar servidores.
+
 | Criterio | Meta | Cómo se comprueba |
 |---|---|---|
 | Latencia hasta la acción | ≤ 1,5 s (p95) | 30 órdenes, restando eventos |

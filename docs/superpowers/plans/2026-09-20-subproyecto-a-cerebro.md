@@ -1132,6 +1132,7 @@ vad = load_silero_vad()
 modelo = WhisperModel("large-v3-turbo", device="cuda", compute_type="float16")
 
 _eventos: queue.Queue = queue.Queue()
+_turnos: queue.Queue = queue.Queue()
 _silenciado = threading.Event()
 
 
@@ -1208,6 +1209,21 @@ def _trozos_archivos(carpeta: str):
                 yield _a_ritmo(np.zeros(MUESTRAS_POR_TROZO, dtype=np.float32))
 
 
+def _transcribir() -> None:
+    """Hilo trabajador: transcribe los turnos que cierra la captura.
+
+    Va aparte para que la captura nunca se detenga; si lo hiciera, el reloj de
+    audio se atrasaria respecto al de pared y las latencias medidas no valdrian.
+    """
+    while True:
+        turno, t_fin = _turnos.get()
+        segs, _info = modelo.transcribe(turno, language="es", beam_size=1,
+                                        vad_filter=False)
+        texto = " ".join(s.text.strip() for s in segs).strip()
+        _emitir(type="transcript", text=texto, t_speech_end=t_fin,
+                t_emitted=time.time(), confidence=1.0, wav=_guardar(turno))
+
+
 def _bucle() -> None:
     trozos = _trozos_micro() if FUENTE == "mic" else _trozos_archivos(FUENTE)
     dentro = False
@@ -1259,15 +1275,12 @@ def _bucle() -> None:
                     continue
                 turno = np.concatenate(buffer)
                 buffer = []
-                segs, _info = modelo.transcribe(turno, language="es", beam_size=1,
-                                                vad_filter=False)
-                texto = " ".join(s.text.strip() for s in segs).strip()
-                _emitir(type="transcript", text=texto, t_speech_end=t_fin,
-                        t_emitted=time.time(), confidence=1.0, wav=_guardar(turno))
+                _turnos.put((turno, t_fin))
 
 
 @app.on_event("startup")
 def arrancar() -> None:
+    threading.Thread(target=_transcribir, daemon=True).start()
     threading.Thread(target=_bucle, daemon=True).start()
 
 
@@ -1409,10 +1422,13 @@ def escuchar(url: str, al_evento, timeout_s: float = 65.0) -> None:
     troceador = Troceador()
     with urllib.request.urlopen(f"{url.rstrip('/')}/events", timeout=timeout_s) as r:
         while True:
-            trozo = r.read(1024)
-            if not trozo:
+            # Por lineas, no por bloques: un read(1024) espera a juntar 1024
+            # bytes y como cada evento ocupa unos 250 retrasaba la entrega
+            # varios turnos, inflando las latencias medidas.
+            linea = r.readline()
+            if not linea:
                 return
-            for ev in troceador.alimentar(trozo):
+            for ev in troceador.alimentar(linea):
                 al_evento(ev)
 ```
 

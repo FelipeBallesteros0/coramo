@@ -34,8 +34,11 @@ def escuchar(url: str, al_evento, timeout_s: float = 65.0) -> None:
     troceador = Troceador()
     with urllib.request.urlopen(f"{url.rstrip('/')}/events", timeout=timeout_s) as r:
         while True:
-            trozo = r.read(1024)
-            if not trozo:
+            # Por lineas, no por bloques: un read(1024) espera a juntar 1024
+            # bytes y como cada evento ocupa unos 250 retrasaba la entrega
+            # varios turnos, inflando las latencias medidas.
+            linea = r.readline()
+            if not linea:
                 return
-            for ev in troceador.alimentar(trozo):
+            for ev in troceador.alimentar(linea):
                 al_evento(ev)

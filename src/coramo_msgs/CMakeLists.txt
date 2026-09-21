@@ -8,6 +8,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/Transcript.msg"
   "msg/BodyCommand.msg"
   "msg/Event.msg"
+  "msg/Say.msg"
   "msg/State.msg"
   DEPENDENCIES std_msgs builtin_interfaces)
 ament_package()

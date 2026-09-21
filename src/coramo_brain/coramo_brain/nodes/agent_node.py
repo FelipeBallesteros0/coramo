@@ -2,8 +2,7 @@
 """Nodo delgado: de transcripcion a comando o respuesta hablada."""
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String
-from coramo_msgs.msg import BodyCommand, Event, Transcript
+from coramo_msgs.msg import BodyCommand, Event, Say, Transcript
 from coramo_brain.core import agent, tools, wake
 
 
@@ -18,7 +17,7 @@ class AgentNode(Node):
                                     float(self.get_parameter("timeout_llm_s").value))
         self._agente = agent.Agente(backend, limites)
         self._cmd = self.create_publisher(BodyCommand, "/body/command", 10)
-        self._say = self.create_publisher(String, "/tts/say", 10)
+        self._say = self.create_publisher(Say, "/tts/say", 10)
         self._ev = self.create_publisher(Event, "/coramo/event", 10)
         self.create_subscription(Transcript, "/speech/text", self._al_llegar, 10)
         self.get_logger().info("agente listo")
@@ -59,7 +58,11 @@ class AgentNode(Node):
         if d.comando is not None:
             self._publicar_comando(d.comando, msg.speech_end)
         if d.texto:
-            self._say.publish(String(data=d.texto))
+            hablar = Say()
+            hablar.header.stamp = self.get_clock().now().to_msg()
+            hablar.text = d.texto
+            hablar.speech_end = msg.speech_end
+            self._say.publish(hablar)
 
 
 def main():

@@ -3,8 +3,7 @@
 import threading
 import rclpy
 from rclpy.node import Node
-from std_msgs.msg import String
-from coramo_msgs.msg import Event
+from coramo_msgs.msg import Event, Say
 from coramo_brain.core.voice_client import Voz
 
 
@@ -16,7 +15,7 @@ class TtsNode(Node):
         self._voz = Voz(self.get_parameter("url_voz").value,
                         self.get_parameter("url_habla").value)
         self._ev = self.create_publisher(Event, "/coramo/event", 10)
-        self.create_subscription(String, "/tts/say", self._al_llegar, 10)
+        self.create_subscription(Say, "/tts/say", self._al_llegar, 10)
         self._ocupado = threading.Lock()
         self.get_logger().info("voz lista")
 
@@ -26,8 +25,8 @@ class TtsNode(Node):
         msg.name, msg.detail = nombre, detalle
         self._ev.publish(msg)
 
-    def _al_llegar(self, msg: String) -> None:
-        threading.Thread(target=self._hablar, args=(msg.data,), daemon=True).start()
+    def _al_llegar(self, msg: Say) -> None:
+        threading.Thread(target=self._hablar, args=(msg.text,), daemon=True).start()
 
     def _hablar(self, texto: str) -> None:
         if not self._ocupado.acquire(blocking=False):
