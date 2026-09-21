@@ -132,7 +132,24 @@ string state
 EOF
 ```
 
-- [ ] **Paso 3: Compilar y verificar**
+- [ ] **Paso 3: Preparar el entorno de compilación (dos trampas, encontradas el 2026-09-20)**
+
+La imagen de Ubuntu 26.04 no trae `empy` ni `lark`, que el generador de mensajes de ROS necesita. Y el Python 3.12 que instala `uv` queda primero en el PATH, así que CMake lo elige para compilar aunque no tenga los módulos de ROS; el síntoma es `ModuleNotFoundError: No module named em` aunque `python3 -c "import em"` funcione en la terminal.
+
+```bash
+sudo apt-get install -y python3-empy python3-lark
+mkdir -p ~/.colcon && cat > ~/.colcon/defaults.yaml <<'EOF'
+# Los paquetes de ROS se compilan siempre contra el Python del sistema, no
+# contra el 3.12 de uv que queda primero en el PATH.
+build:
+  cmake-args:
+    - -DPython3_EXECUTABLE=/usr/bin/python3
+    - -DPYTHON_EXECUTABLE=/usr/bin/python3
+EOF
+```
+Esperado: `python3 -c "import em, lark"` sin error y el archivo de colcon creado. Si ya se intentó compilar antes, borrar `build/` e `install/` para que CMake vuelva a decidir.
+
+- [ ] **Paso 4: Compilar y verificar**
 
 ```bash
 cd ~/coramo && colcon build --symlink-install --packages-select coramo_msgs 2>&1 | tail -3
@@ -140,7 +157,7 @@ source install/setup.bash && ros2 interface show coramo_msgs/msg/BodyCommand
 ```
 Esperado: `Summary: 1 package finished` y la definición completa de `BodyCommand` con sus cuatro constantes.
 
-- [ ] **Paso 4: Commit**
+- [ ] **Paso 5: Commit**
 
 ```bash
 cd ~/coramo && echo "build/
