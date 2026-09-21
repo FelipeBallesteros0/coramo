@@ -36,6 +36,7 @@ PREVIOS_TROZOS = 10            # 320 ms de audio previo al inicio del habla
 TURNO_MAXIMO_S = 15.0
 COMPUERTA_DBFS = float(os.environ.get("CORAMO_COMPUERTA_DBFS", "-45"))
 FUENTE = os.environ.get("CORAMO_FUENTE", "mic")
+REPETIR = int(os.environ.get("CORAMO_REPETIR", "1"))   # 0 = sin fin
 DISPOSITIVO = os.environ.get("CORAMO_ALSA", "default")
 SESIONES = Path.home() / "datos" / "sesiones"
 
@@ -84,15 +85,40 @@ def _trozos_micro():
         p.terminate()
 
 
+_siguiente = [0.0]
+
+
+def _a_ritmo(trozo: np.ndarray) -> np.ndarray:
+    """Espera lo necesario para entregar el trozo a la misma velocidad que el
+    microfono. Sin esto el reloj de audio adelanta al de pared y las latencias
+    medidas salen sin sentido."""
+    ahora = time.monotonic()
+    if _siguiente[0] == 0.0:
+        _siguiente[0] = ahora
+    espera = _siguiente[0] - ahora
+    if espera > 0:
+        time.sleep(espera)
+    _siguiente[0] += MUESTRAS_POR_TROZO / FRECUENCIA
+    return trozo
+
+
 def _trozos_archivos(carpeta: str):
-    for ruta in sorted(Path(carpeta).glob("*.wav")):
-        with wave.open(str(ruta)) as w:
-            datos = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2")
-        muestras = datos.astype(np.float32) / 32768.0
-        for i in range(0, len(muestras) - MUESTRAS_POR_TROZO, MUESTRAS_POR_TROZO):
-            yield muestras[i:i + MUESTRAS_POR_TROZO]
-        for _ in range(int(FRECUENCIA * (SILENCIO_FIN_S + 0.3)) // MUESTRAS_POR_TROZO):
-            yield np.zeros(MUESTRAS_POR_TROZO, dtype=np.float32)
+    """Reproduce los WAV de la carpeta, separados por silencio.
+
+    REPETIR=1 da una pasada, que es lo que se quiere para medir con un juego de
+    ordenes exacto. REPETIR=0 repite sin fin, para desarrollar sin microfono.
+    """
+    vuelta = 0
+    while REPETIR == 0 or vuelta < REPETIR:
+        vuelta += 1
+        for ruta in sorted(Path(carpeta).glob("*.wav")):
+            with wave.open(str(ruta)) as w:
+                datos = np.frombuffer(w.readframes(w.getnframes()), dtype="<i2")
+            muestras = datos.astype(np.float32) / 32768.0
+            for i in range(0, len(muestras) - MUESTRAS_POR_TROZO, MUESTRAS_POR_TROZO):
+                yield _a_ritmo(muestras[i:i + MUESTRAS_POR_TROZO])
+            for _ in range(int(FRECUENCIA * (SILENCIO_FIN_S + 0.5)) // MUESTRAS_POR_TROZO):
+                yield _a_ritmo(np.zeros(MUESTRAS_POR_TROZO, dtype=np.float32))
 
 
 def _bucle() -> None:

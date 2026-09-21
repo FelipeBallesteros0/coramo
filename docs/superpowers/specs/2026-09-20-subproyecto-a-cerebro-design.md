@@ -240,11 +240,17 @@ El nodo `supervisor` escucha `/coramo/event` y publica el estado. Como cada even
 
 | Tramo | De qué evento a cuál | Objetivo |
 |---|---|---|
-| Cierre del turno | `speech_end` → `transcript` | ≤ 0,30 s |
+| Cierre del turno | `speech_end` → `transcript` | ≤ 0,75 s |
 | Decisión | `transcript` → `tool_chosen` | ≤ 0,50 s |
 | Validación y envío | `tool_chosen` → `command_sent` | ≤ 0,02 s |
 | **Total hasta la acción** | `speech_end` → `command_sent` | **≤ 1,5 s (p95)** |
 | Hasta que se oye la respuesta | `speech_end` → `tts_first_audio` | ≤ 1,8 s |
+
+El cierre del turno tiene dos partes que conviene no confundir. `speech_end`
+marca el instante en que el usuario dejó de hablar, pero el detector todavía
+espera **0,6 s de silencio** para confirmar que terminó, y solo entonces
+transcribe. De esos 0,75 s, 0,6 son esa espera, que es una constante
+configurable, y el resto es la transcripción. Medido el 2026-09-20: **0,72 s**.
 
 Nota sobre el presupuesto: el documento maestro contaba 0,6 s de silencio del detector dentro del total. Aquí el silencio se mide aparte, porque es una constante configurable y no un coste de procesamiento. Con 0,6 s de silencio y estos tramos, el usuario percibe alrededor de **1,1 s**.
 
