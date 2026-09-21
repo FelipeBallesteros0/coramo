@@ -1017,15 +1017,17 @@ Expected: los commits del Xeon aparecen en el clon de WSL.
 **Files:**
 - GitHub: rama `v1-rpi5`, tag `v1.0`, `main` reiniciado; `docs/legado/` con los `docs/01..06` de v1.
 
-Esta tarea **hace push**. No se ejecuta sin que Felipe lo diga en el momento.
+Esta tarea **hace push**. Ejecutada el 2026-09-20 con permiso explícito de Felipe; el `push --force-with-lease` final lo corrió él, porque el clasificador bloquea reescribir historia en un remoto.
 
-- [ ] **Step 1: Conservar v1**
+**Resultado en GitHub:** `main` = `6da88e8` (39 archivos, historial limpio), `v1-rpi5` = `e7173ad` y tag `v1.0` con la v1 íntegra, `v2-planificacion` con el historial completo del rediseño como respaldo.
+
+- [x] **Step 1: Conservar v1**
 
 ```bash
 cd ~/coramo && git branch v1-rpi5 e7173ad && git tag -a v1.0 e7173ad -m "CORAMO v1: RPi5 + 2x RX 580, pipeline de voz a mano robótica" && git push origin v1-rpi5 v1.0
 ```
 
-- [ ] **Step 2: Nuevo main con historia limpia**
+- [x] **Step 2: Nuevo main con historia limpia**
 
 ```bash
 cd ~/coramo && git checkout --orphan main-v2 && git rm -rq . && git checkout v2-planificacion -- docs/superpowers head tools && git checkout v1-rpi5 -- docs/01-red.md docs/02-alimentacion.md docs/03-gpu.md docs/04-video.md docs/05-whisper.md docs/06-asistente-voz.md && mkdir -p docs/legado && git mv docs/0*.md docs/legado/ && printf '# CORAMO v2\n\nRobot humanoide COlaborativo Reprogramable Autónomo MOdular. Rediseño 2026.\n\n- Diseño: docs/superpowers/specs/\n- Planes: docs/superpowers/plans/\n- Instalación: docs/instalacion/\n- Mediciones: docs/mediciones/\n- v1 (2026, RPi5 + RX 580): rama v1-rpi5, tag v1.0, docs/legado/\n' > README.md && git add -A && git -c user.name="Felipe Ballesteros" -c user.email="felipe1024@gmail.com" commit -qm "CORAMO v2: inicio limpio (spec, plan del hito 0, docs de v1 en legado)" && git branch -M main-v2 main && git push --force-with-lease origin main
