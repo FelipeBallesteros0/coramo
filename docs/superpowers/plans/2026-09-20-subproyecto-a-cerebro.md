@@ -803,14 +803,32 @@ class Peticion(BaseModel):
 
 
 def _reproducir(audio: np.ndarray) -> None:
+    """Reproduce por el parlante. Lanza si no suena, en vez de callarlo.
+
+    Bajo systemd hace falta XDG_RUNTIME_DIR para alcanzar PipeWire; sin el,
+    aplay responde "Host is down" y el robot parece hablar sin que suene nada.
+    """
     buf = io.BytesIO()
     with wave.open(buf, "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
         w.setframerate(FRECUENCIA)
         w.writeframes((np.clip(audio, -1, 1) * 32767).astype("<i2").tobytes())
-    subprocess.run(["aplay", "-q", "-D", DISPOSITIVO, "-"],
-                   input=buf.getvalue(), check=False)
+    r = subprocess.run(["aplay", "-q", "-D", DISPOSITIVO, "-"],
+                       input=buf.getvalue(), capture_output=True)
+    if r.returncode != 0:
+        raise RuntimeError(f"no se pudo reproducir: {r.stderr.decode().strip()[:120]}")
+
+
+@app.on_event("startup")
+def calentar() -> None:
+    """Sintetiza una frase corta sin reproducirla.
+
+    Sin esto la primera peticion real tarda 1,8 s en vez de 0,13 s, porque el
+    modelo carga la voz la primera vez. Medido el 2026-09-20.
+    """
+    for _gs, _ps, _audio in pipe("listo", voice=VOZ):
+        break
 
 
 @app.get("/health")
@@ -846,7 +864,7 @@ Esperado: el `health` responde con `"ok": true`, se oye la frase por el parlante
 - [ ] **Paso 3: Dejarlo como servicio**
 
 ```bash
-ssh coramo 'printf "[Unit]\nDescription=CORAMO servidor de voz\nAfter=network.target\n\n[Service]\nUser=coramo\nWorkingDirectory=/home/coramo/coramo/servers/voice\nExecStart=/home/coramo/venvs/tts/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8092\nRestart=always\nRestartSec=5\n\n[Install]\nWantedBy=multi-user.target\n" > /tmp/v.service
+ssh coramo 'printf "[Unit]\nDescription=CORAMO servidor de voz\nAfter=network.target\n\n[Service]\nUser=coramo\nEnvironment=XDG_RUNTIME_DIR=/run/user/1000\nWorkingDirectory=/home/coramo/coramo/servers/voice\nExecStart=/home/coramo/venvs/tts/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8092\nRestart=always\nRestartSec=5\n\n[Install]\nWantedBy=multi-user.target\n" > /tmp/v.service
 echo coramo123 | sudo -S -p "" install -m 644 /tmp/v.service /etc/systemd/system/coramo-voice.service
 pkill -f "uvicorn app:app --host 127.0.0.1 --port 8092"
 echo coramo123 | sudo -S -p "" systemctl daemon-reload
