@@ -1,0 +1,18 @@
+# Perfil de desarrollo: cuerpo simulado, backends locales reales.
+/**:
+  ros__parameters:
+    joints_yaml: /home/coramo/coramo/src/coramo_description/config/joints.yaml
+agent:
+  ros__parameters:
+    url_llm: http://127.0.0.1:9
+    timeout_llm_s: 10.0
+speech:
+  ros__parameters:
+    url_habla: http://127.0.0.1:8091
+tts:
+  ros__parameters:
+    url_voz: http://127.0.0.1:8092
+    url_habla: http://127.0.0.1:8091
+body_bridge:
+  ros__parameters:
+    velocidad_grados_por_s: 180.0
