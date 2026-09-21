@@ -1,5 +1,7 @@
 # Subproyecto A — Cerebro: plan de implementación
 
+> **Ejecutado el 2026-09-20.** Las 14 tareas están hechas y verificadas en hardware real. Resultados en `docs/mediciones/2026-09-20-subproyecto-a.md`; los siete fallos encontrados al construir están anotados en cada tarea y en la bitácora.
+
 > **Para quien ejecute esto:** usa `superpowers:subagent-driven-development` (recomendado) o `superpowers:executing-plans` para ir tarea por tarea. Los pasos usan casillas `- [ ]` para marcar avance.
 
 **Objetivo:** que el robot escuche una orden hablada en español y emita un comando validado hacia el cuerpo, o responda por voz, en menos de 1,5 segundos.
@@ -52,7 +54,7 @@ Se aplican a todas las tareas. Cada una las hereda sin repetirlas.
 **Interfaces:**
 - Produce: los cuatro tipos de mensaje que usan todas las tareas siguientes. `coramo_msgs/msg/BodyCommand` lo hereda el subproyecto B sin cambios.
 
-- [ ] **Paso 1: Crear el paquete de mensajes**
+- [x] **Paso 1: Crear el paquete de mensajes**
 
 ```bash
 mkdir -p ~/coramo/src/coramo_msgs/msg
@@ -90,7 +92,7 @@ ament_package()
 EOF
 ```
 
-- [ ] **Paso 2: Escribir los cuatro mensajes**
+- [x] **Paso 2: Escribir los cuatro mensajes**
 
 ```bash
 cd ~/coramo/src/coramo_msgs/msg
@@ -132,7 +134,7 @@ string state
 EOF
 ```
 
-- [ ] **Paso 3: Preparar el entorno de compilación (dos trampas, encontradas el 2026-09-20)**
+- [x] **Paso 3: Preparar el entorno de compilación (dos trampas, encontradas el 2026-09-20)**
 
 La imagen de Ubuntu 26.04 no trae `empy` ni `lark`, que el generador de mensajes de ROS necesita. Y el Python 3.12 que instala `uv` queda primero en el PATH, así que CMake lo elige para compilar aunque no tenga los módulos de ROS; el síntoma es `ModuleNotFoundError: No module named em` aunque `python3 -c "import em"` funcione en la terminal.
 
@@ -149,7 +151,7 @@ EOF
 ```
 Esperado: `python3 -c "import em, lark"` sin error y el archivo de colcon creado. Si ya se intentó compilar antes, borrar `build/` e `install/` para que CMake vuelva a decidir.
 
-- [ ] **Paso 4: Compilar y verificar**
+- [x] **Paso 4: Compilar y verificar**
 
 ```bash
 cd ~/coramo && colcon build --symlink-install --packages-select coramo_msgs 2>&1 | tail -3
@@ -157,7 +159,7 @@ source install/setup.bash && ros2 interface show coramo_msgs/msg/BodyCommand
 ```
 Esperado: `Summary: 1 package finished` y la definición completa de `BodyCommand` con sus cuatro constantes.
 
-- [ ] **Paso 5: Commit**
+- [x] **Paso 5: Commit**
 
 ```bash
 cd ~/coramo && echo "build/
@@ -179,7 +181,7 @@ log/" >> .gitignore && git add src .gitignore && git commit -m "feat(msgs): mens
 - Consume: nada.
 - Produce: `core.tools.TOOLS` (esquema JSON para el modelo), `core.tools.cargar_limites(path) -> dict[str, tuple[float, float]]`, `core.tools.a_comando(nombre, args) -> dict` que convierte la salida del modelo en los campos de `BodyCommand`.
 
-- [ ] **Paso 1: Crear el paquete Python y los límites provisionales**
+- [x] **Paso 1: Crear el paquete Python y los límites provisionales**
 
 ```bash
 mkdir -p ~/coramo/src/coramo_brain/coramo_brain/core ~/coramo/src/coramo_brain/test ~/coramo/src/coramo_brain/resource ~/coramo/src/coramo_description/config
@@ -211,7 +213,7 @@ poses_cabeza:
 EOF
 ```
 
-- [ ] **Paso 2: Escribir la prueba que falla**
+- [x] **Paso 2: Escribir la prueba que falla**
 
 ```python
 # src/coramo_brain/test/test_tools.py
@@ -249,14 +251,14 @@ def test_articulacion_inexistente_se_rechaza():
         tools.a_comando("mano", {"dedos": {"tentaculo": 90}}, tools.cargar_limites(RUTA))
 ```
 
-- [ ] **Paso 3: Verla fallar**
+- [x] **Paso 3: Verla fallar**
 
 ```bash
 cd ~/coramo && python3 -m pytest src/coramo_brain/test/test_tools.py -q 2>&1 | tail -3
 ```
 Esperado: error de importación, `No module named 'coramo_brain'`.
 
-- [ ] **Paso 4: Escribir `core/tools.py`**
+- [x] **Paso 4: Escribir `core/tools.py`**
 
 ```python
 # src/coramo_brain/coramo_brain/core/tools.py
@@ -394,7 +396,7 @@ def a_comando(nombre: str, args: dict, limites: dict) -> dict:
             "joint_positions_deg": [float(angulos[n]) for n in nombres]}
 ```
 
-- [ ] **Paso 5: Completar el paquete y verla pasar**
+- [x] **Paso 5: Completar el paquete y verla pasar**
 
 ```bash
 cat > ~/coramo/src/coramo_brain/setup.py <<'EOF'
@@ -433,7 +435,7 @@ cd ~/coramo && PYTHONPATH=src/coramo_brain python3 -m pytest src/coramo_brain/te
 ```
 Esperado: `5 passed`.
 
-- [ ] **Paso 6: Commit**
+- [x] **Paso 6: Commit**
 
 ```bash
 cd ~/coramo && git add src && git commit -m "feat(brain): herramientas del modelo y limites articulares, con pruebas"
@@ -453,7 +455,7 @@ cd ~/coramo && git add src && git commit -m "feat(brain): herramientas del model
 - Consume: `core.tools.cargar_limites`, `ComandoInvalido`.
 - Produce: `core.safety.Filtro` con `revisar(cmd, ahora) -> (bool, str)` y `estado` (`activo` o `detenido`). El nodo publica `/body/command_safe` y ofrece el servicio `/body/estop`.
 
-- [ ] **Paso 1: Escribir la prueba que falla**
+- [x] **Paso 1: Escribir la prueba que falla**
 
 ```python
 # src/coramo_brain/test/test_safety.py
@@ -504,14 +506,14 @@ def test_la_parada_siempre_pasa():
     assert ok
 ```
 
-- [ ] **Paso 2: Verla fallar**
+- [x] **Paso 2: Verla fallar**
 
 ```bash
 cd ~/coramo && PYTHONPATH=src/coramo_brain python3 -m pytest src/coramo_brain/test/test_safety.py -q 2>&1 | tail -3
 ```
 Esperado: `ModuleNotFoundError: No module named 'coramo_brain.core.safety'`.
 
-- [ ] **Paso 3: Escribir `core/safety.py`**
+- [x] **Paso 3: Escribir `core/safety.py`**
 
 ```python
 # src/coramo_brain/coramo_brain/core/safety.py
@@ -563,14 +565,14 @@ class Filtro:
         return True, ""
 ```
 
-- [ ] **Paso 4: Verla pasar**
+- [x] **Paso 4: Verla pasar**
 
 ```bash
 cd ~/coramo && PYTHONPATH=src/coramo_brain python3 -m pytest src/coramo_brain/test/test_safety.py -q 2>&1 | tail -3
 ```
 Esperado: `5 passed`.
 
-- [ ] **Paso 5: Escribir el nodo**
+- [x] **Paso 5: Escribir el nodo**
 
 ```python
 # src/coramo_brain/coramo_brain/nodes/safety_node.py
@@ -639,7 +641,7 @@ def main():
         rclpy.try_shutdown()
 ```
 
-- [ ] **Paso 6: Registrar el ejecutable, compilar y probar a mano**
+- [x] **Paso 6: Registrar el ejecutable, compilar y probar a mano**
 
 ```bash
 cd ~/coramo && sed -i 's|"console_scripts": \[\]|"console_scripts": ["safety = coramo_brain.nodes.safety_node:main"]|' src/coramo_brain/setup.py
@@ -654,7 +656,7 @@ pkill -f "[c]oramo_brain.nodes.safety_node"
 ```
 Esperado: el primer comando aparece en `/body/command_safe`; el segundo no, y en `/coramo/event` sale `command_rejected` con la razón.
 
-- [ ] **Paso 7: Commit**
+- [x] **Paso 7: Commit**
 
 ```bash
 cd ~/coramo && git add src && git commit -m "feat(safety): filtro de limites, parada y rearme, con nodo y pruebas"
@@ -672,7 +674,7 @@ cd ~/coramo && git add src && git commit -m "feat(safety): filtro de limites, pa
 - Consume: `/body/command_safe`.
 - Produce: `/joint_states` (`sensor_msgs/JointState`) con la última posición ordenada, a 20 Hz. El subproyecto B lo reemplaza por el puente real sin que cambie nada aguas arriba.
 
-- [ ] **Paso 1: Escribir el nodo**
+- [x] **Paso 1: Escribir el nodo**
 
 ```python
 # src/coramo_brain/coramo_brain/nodes/body_bridge_sim_node.py
@@ -741,7 +743,7 @@ def main():
         rclpy.try_shutdown()
 ```
 
-- [ ] **Paso 2: Registrar, compilar y comprobar el movimiento**
+- [x] **Paso 2: Registrar, compilar y comprobar el movimiento**
 
 ```bash
 cd ~/coramo && sed -i 's|"safety = coramo_brain.nodes.safety_node:main"|"safety = coramo_brain.nodes.safety_node:main", "body_bridge_sim = coramo_brain.nodes.body_bridge_sim_node:main"|' src/coramo_brain/setup.py
@@ -753,7 +755,7 @@ pkill -f "[b]ody_bridge_sim_node"
 ```
 Esperado: `/joint_states` con `indice` y `medio` en 3,14 radianes, que son los 180 grados pedidos.
 
-- [ ] **Paso 3: Commit**
+- [x] **Paso 3: Commit**
 
 ```bash
 cd ~/coramo && git add src && git commit -m "feat(body): puente simulado que mueve articulaciones a velocidad finita"
@@ -770,7 +772,7 @@ cd ~/coramo && git add src && git commit -m "feat(body): puente simulado que mue
 **Interfaces:**
 - Produce: `POST /say {"texto": str}` que sintetiza y reproduce, devolviendo `{"t_first_audio": float, "t_done": float}`; `GET /health`. Puerto 8092.
 
-- [ ] **Paso 1: Escribir el servidor**
+- [x] **Paso 1: Escribir el servidor**
 
 ```python
 # servers/voice/app.py
@@ -849,7 +851,7 @@ def say(p: Peticion):
     return {"t_first_audio": primero, "t_done": time.time(), "t_recibido": t0}
 ```
 
-- [ ] **Paso 2: Instalar dependencias y probar a mano**
+- [x] **Paso 2: Instalar dependencias y probar a mano**
 
 ```bash
 ssh coramo 'export PATH=$HOME/.local/bin:$PATH; uv pip install --python ~/venvs/tts/bin/python -q fastapi uvicorn
@@ -861,7 +863,7 @@ curl -s -X POST http://127.0.0.1:8092/say -H "Content-Type: application/json" -d
 ```
 Esperado: el `health` responde con `"ok": true`, se oye la frase por el parlante, y el `say` devuelve las dos marcas de tiempo. La diferencia entre `t_first_audio` y `t_recibido` debe rondar 0,15 s.
 
-- [ ] **Paso 3: Dejarlo como servicio**
+- [x] **Paso 3: Dejarlo como servicio**
 
 ```bash
 ssh coramo 'printf "[Unit]\nDescription=CORAMO servidor de voz\nAfter=network.target\n\n[Service]\nUser=coramo\nEnvironment=XDG_RUNTIME_DIR=/run/user/1000\nWorkingDirectory=/home/coramo/coramo/servers/voice\nExecStart=/home/coramo/venvs/tts/bin/python -m uvicorn app:app --host 127.0.0.1 --port 8092\nRestart=always\nRestartSec=5\n\n[Install]\nWantedBy=multi-user.target\n" > /tmp/v.service
@@ -873,7 +875,7 @@ systemctl is-active coramo-voice; curl -s http://127.0.0.1:8092/health'
 ```
 Esperado: `active` y el `health` responde.
 
-- [ ] **Paso 4: Commit**
+- [x] **Paso 4: Commit**
 
 ```bash
 cd ~/coramo && git add servers && git commit -m "feat(voice): servidor de sintesis con medicion de primer audio"
@@ -892,7 +894,7 @@ cd ~/coramo && git add servers && git commit -m "feat(voice): servidor de sintes
 - Consume: `/tts/say` (`std_msgs/String`).
 - Produce: eventos `tts_first_audio` y `tts_done`. Silencia el micrófono llamando a `POST /mute` del servidor de habla mientras dura, y lo reactiva al terminar; si ese servidor no existe todavía, lo registra y sigue.
 
-- [ ] **Paso 1: Escribir la prueba con un servidor falso**
+- [x] **Paso 1: Escribir la prueba con un servidor falso**
 
 ```python
 # src/coramo_brain/test/test_voice_client.py
@@ -947,7 +949,7 @@ def test_si_el_servidor_de_habla_no_esta_igual_habla():
     assert r["t_first_audio"] == 100.5
 ```
 
-- [ ] **Paso 2: Verla fallar, escribir el cliente, verla pasar**
+- [x] **Paso 2: Verla fallar, escribir el cliente, verla pasar**
 
 ```python
 # src/coramo_brain/coramo_brain/core/voice_client.py
@@ -991,7 +993,7 @@ cd ~/coramo && PYTHONPATH=src/coramo_brain python3 -m pytest src/coramo_brain/te
 ```
 Esperado: `2 passed`.
 
-- [ ] **Paso 3: Escribir el nodo**
+- [x] **Paso 3: Escribir el nodo**
 
 ```python
 # src/coramo_brain/coramo_brain/nodes/tts_node.py
@@ -1053,7 +1055,7 @@ def main():
         rclpy.try_shutdown()
 ```
 
-- [ ] **Paso 4: Registrar, compilar y comprobar que suena**
+- [x] **Paso 4: Registrar, compilar y comprobar que suena**
 
 ```bash
 cd ~/coramo && sed -i 's|"body_bridge_sim = coramo_brain.nodes.body_bridge_sim_node:main"|"body_bridge_sim = coramo_brain.nodes.body_bridge_sim_node:main", "tts = coramo_brain.nodes.tts_node:main"|' src/coramo_brain/setup.py
@@ -1065,7 +1067,7 @@ pkill -f "[t]ts_node"
 ```
 Esperado: se oye la frase y el primer evento es `tts_first_audio`.
 
-- [ ] **Paso 5: Commit**
+- [x] **Paso 5: Commit**
 
 ```bash
 cd ~/coramo && git add src && git commit -m "feat(tts): nodo de voz que silencia el microfono mientras habla"
@@ -1082,7 +1084,7 @@ cd ~/coramo && git add src && git commit -m "feat(tts): nodo de voz que silencia
 - Produce: `GET /events` (flujo de eventos), `POST /mute`, `POST /unmute`, `GET /health`. Puerto 8091. Guarda el audio de cada turno en `~/datos/sesiones/<fecha>/<hora>.wav`.
 - Parámetro `fuente`: `mic` para el micrófono o una ruta de carpeta con WAV, que es lo que permite probar sin micrófono.
 
-- [ ] **Paso 1: Escribir el servidor**
+- [x] **Paso 1: Escribir el servidor**
 
 ```python
 # servers/speech/app.py
@@ -1315,7 +1317,7 @@ async def events():
     return StreamingResponse(generar(), media_type="text/event-stream")
 ```
 
-- [ ] **Paso 2: Instalar y probar con audio grabado, sin micrófono**
+- [x] **Paso 2: Instalar y probar con audio grabado, sin micrófono**
 
 ```bash
 ssh coramo 'export PATH=$HOME/.local/bin:$PATH; uv pip install --python ~/venvs/stt/bin/python -q fastapi uvicorn silero-vad torch; mkdir -p ~/coramo/servers/speech'
@@ -1326,7 +1328,7 @@ curl -s http://127.0.0.1:8091/health; echo; timeout 25 curl -sN http://127.0.0.1
 ```
 Esperado: el `health` responde, y en el flujo aparecen `speech_start`, `speech_end` y dos `transcript` con los textos «coramo cierra la mano» y «coramo detente».
 
-- [ ] **Paso 3: Dejarlo como servicio, ya con el micrófono**
+- [x] **Paso 3: Dejarlo como servicio, ya con el micrófono**
 
 ```bash
 ssh coramo 'pkill -f "uvicorn app:app --host 127.0.0.1 --port 8091"
@@ -1338,7 +1340,7 @@ systemctl is-active coramo-speech; curl -s http://127.0.0.1:8091/health'
 ```
 Esperado: `active` y `"fuente": "mic"`. Hablarle al micrófono debe producir un `transcript` en el flujo de eventos.
 
-- [ ] **Paso 4: Commit**
+- [x] **Paso 4: Commit**
 
 ```bash
 cd ~/coramo && git add servers && git commit -m "feat(speech): servidor de captura, deteccion de habla y transcripcion"
@@ -1357,7 +1359,7 @@ cd ~/coramo && git add servers && git commit -m "feat(speech): servidor de captu
 - Consume: el flujo de eventos del servidor de habla.
 - Produce: `/speech/text` (`coramo_msgs/Transcript`) y los eventos `speech_start`, `speech_end`, `transcript`.
 
-- [ ] **Paso 1: Prueba del troceador de eventos**
+- [x] **Paso 1: Prueba del troceador de eventos**
 
 ```python
 # src/coramo_brain/test/test_speech_client.py
@@ -1383,7 +1385,7 @@ def test_json_roto_no_rompe_el_flujo():
     assert [e["type"] for e in eventos] == ["transcript"]
 ```
 
-- [ ] **Paso 2: Verla fallar, escribir el cliente, verla pasar**
+- [x] **Paso 2: Verla fallar, escribir el cliente, verla pasar**
 
 ```python
 # src/coramo_brain/coramo_brain/core/speech_client.py
@@ -1437,7 +1439,7 @@ cd ~/coramo && PYTHONPATH=src/coramo_brain python3 -m pytest src/coramo_brain/te
 ```
 Esperado: `3 passed`.
 
-- [ ] **Paso 3: Escribir el nodo**
+- [x] **Paso 3: Escribir el nodo**
 
 ```python
 # src/coramo_brain/coramo_brain/nodes/speech_node.py
@@ -1509,7 +1511,7 @@ def main():
         rclpy.try_shutdown()
 ```
 
-- [ ] **Paso 4: Registrar, compilar y comprobar hablándole**
+- [x] **Paso 4: Registrar, compilar y comprobar hablándole**
 
 ```bash
 cd ~/coramo && sed -i 's|"tts = coramo_brain.nodes.tts_node:main"|"tts = coramo_brain.nodes.tts_node:main", "speech = coramo_brain.nodes.speech_node:main"|' src/coramo_brain/setup.py
@@ -1521,7 +1523,7 @@ pkill -f "[s]peech_node"
 ```
 Esperado: un `Transcript` con el texto reconocido y `speech_end` relleno.
 
-- [ ] **Paso 5: Commit**
+- [x] **Paso 5: Commit**
 
 ```bash
 cd ~/coramo && git add src && git commit -m "feat(speech): nodo que publica transcripciones y eventos"
@@ -1538,7 +1540,7 @@ cd ~/coramo && git add src && git commit -m "feat(speech): nodo que publica tran
 **Interfaces:**
 - Produce: `core.wake.revisar(texto) -> Resultado` con los campos `activado` (bool), `es_parada` (bool) y `orden` (el texto sin la palabra de activación).
 
-- [ ] **Paso 1: Prueba con las confusiones reales del hito 0**
+- [x] **Paso 1: Prueba con las confusiones reales del hito 0**
 
 ```python
 # src/coramo_brain/test/test_wake.py
@@ -1584,7 +1586,7 @@ def test_una_orden_normal_no_es_parada():
     assert not wake.revisar("coramo cierra la mano").es_parada
 ```
 
-- [ ] **Paso 2: Verla fallar, escribir el módulo, verla pasar**
+- [x] **Paso 2: Verla fallar, escribir el módulo, verla pasar**
 
 ```python
 # src/coramo_brain/coramo_brain/core/wake.py
@@ -1649,7 +1651,7 @@ cd ~/coramo && PYTHONPATH=src/coramo_brain python3 -m pytest src/coramo_brain/te
 ```
 Esperado: `16 passed`.
 
-- [ ] **Paso 3: Commit**
+- [x] **Paso 3: Commit**
 
 ```bash
 cd ~/coramo && git add src && git commit -m "feat(wake): palabra de activacion tolerante y atajo de parada"
@@ -1669,7 +1671,7 @@ cd ~/coramo && git add src && git commit -m "feat(wake): palabra de activacion t
 - Produce: `/body/command` y `/tts/say`; eventos `wake_ok`, `wake_no`, `tool_chosen`.
 - `core.agent.Backend` es la interfaz: `elegir(texto) -> (nombre, args)`. Hay dos implementaciones, `LlamaServer` y `Grabado` para pruebas.
 
-- [ ] **Paso 1: Prueba con un backend grabado**
+- [x] **Paso 1: Prueba con un backend grabado**
 
 ```python
 # src/coramo_brain/test/test_agent.py
@@ -1716,7 +1718,7 @@ def test_si_el_modelo_falla_el_robot_lo_dice_en_vez_de_inventar():
     assert r.comando is None and "entend" in r.texto.lower()
 ```
 
-- [ ] **Paso 2: Verla fallar, escribir el módulo, verla pasar**
+- [x] **Paso 2: Verla fallar, escribir el módulo, verla pasar**
 
 ```python
 # src/coramo_brain/coramo_brain/core/agent.py
@@ -1818,7 +1820,7 @@ cd ~/coramo && PYTHONPATH=src/coramo_brain python3 -m pytest src/coramo_brain/te
 ```
 Esperado: `6 passed`.
 
-- [ ] **Paso 3: Escribir el nodo**
+- [x] **Paso 3: Escribir el nodo**
 
 ```python
 # src/coramo_brain/coramo_brain/nodes/agent_node.py
@@ -1897,7 +1899,7 @@ def main():
         rclpy.try_shutdown()
 ```
 
-- [ ] **Paso 4: Registrar, compilar y probar el camino completo a mano**
+- [x] **Paso 4: Registrar, compilar y probar el camino completo a mano**
 
 ```bash
 cd ~/coramo && sed -i 's|"speech = coramo_brain.nodes.speech_node:main"|"speech = coramo_brain.nodes.speech_node:main", "agent = coramo_brain.nodes.agent_node:main"|' src/coramo_brain/setup.py
@@ -1910,7 +1912,7 @@ pkill -f "[a]gent_node"
 ```
 Esperado: un `BodyCommand` con `tool: mano`, `preset: cierra` y los cinco dedos a 180 grados.
 
-- [ ] **Paso 5: Commit**
+- [x] **Paso 5: Commit**
 
 ```bash
 cd ~/coramo && git add src && git commit -m "feat(agent): de transcripcion a comando, con atajo de parada"
@@ -1930,7 +1932,7 @@ cd ~/coramo && git add src && git commit -m "feat(agent): de transcripcion a com
 - Consume: `/coramo/event`.
 - Produce: `/coramo/state` (`coramo_msgs/State`). `tools/latencias.py` escucha los eventos y saca la tabla de tramos.
 
-- [ ] **Paso 1: Prueba de la máquina de estados**
+- [x] **Paso 1: Prueba de la máquina de estados**
 
 ```python
 # src/coramo_brain/test/test_state.py
@@ -1966,7 +1968,7 @@ def test_un_evento_desconocido_no_cambia_el_estado():
     assert m.aplicar("cualquier_cosa") == "LISTENING"
 ```
 
-- [ ] **Paso 2: Verla fallar, escribir el módulo, verla pasar**
+- [x] **Paso 2: Verla fallar, escribir el módulo, verla pasar**
 
 ```python
 # src/coramo_brain/coramo_brain/core/state.py
@@ -2008,7 +2010,7 @@ cd ~/coramo && PYTHONPATH=src/coramo_brain python3 -m pytest src/coramo_brain/te
 ```
 Esperado: `4 passed`.
 
-- [ ] **Paso 3: Escribir el nodo y la herramienta de medición**
+- [x] **Paso 3: Escribir el nodo y la herramienta de medición**
 
 ```python
 # src/coramo_brain/coramo_brain/nodes/supervisor_node.py
@@ -2110,7 +2112,7 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Paso 4: Registrar, compilar y comprobar el estado**
+- [x] **Paso 4: Registrar, compilar y comprobar el estado**
 
 ```bash
 cd ~/coramo && sed -i 's|"agent = coramo_brain.nodes.agent_node:main"|"agent = coramo_brain.nodes.agent_node:main", "supervisor = coramo_brain.nodes.supervisor_node:main"|' src/coramo_brain/setup.py
@@ -2122,7 +2124,7 @@ pkill -f "[s]upervisor_node"
 ```
 Esperado: el registro del supervisor muestra `IDLE -> LISTENING -> THINKING -> ACTING -> IDLE` y el último estado publicado es `IDLE`.
 
-- [ ] **Paso 5: Commit**
+- [x] **Paso 5: Commit**
 
 ```bash
 cd ~/coramo && git add src tools && git commit -m "feat(supervisor): maquina de estados y herramienta de latencias"
@@ -2141,7 +2143,7 @@ cd ~/coramo && git add src tools && git commit -m "feat(supervisor): maquina de 
 **Interfaces:**
 - Produce: `ros2 launch coramo_bringup cerebro.launch.py perfil:=dev-sin-robot` levanta el cerebro completo.
 
-- [ ] **Paso 1: Crear el paquete y los perfiles**
+- [x] **Paso 1: Crear el paquete y los perfiles**
 
 ```bash
 mkdir -p ~/coramo/src/coramo_bringup/{launch,params,resource}
@@ -2172,7 +2174,7 @@ sed 's|url_llm: http://127.0.0.1:8080|url_llm: http://127.0.0.1:9|' \
   ~/coramo/src/coramo_bringup/params/dev-sin-robot.yaml > ~/coramo/src/coramo_bringup/params/dev-sin-gpu.yaml
 ```
 
-- [ ] **Paso 2: Escribir el lanzador**
+- [x] **Paso 2: Escribir el lanzador**
 
 ```python
 # src/coramo_bringup/launch/cerebro.launch.py
@@ -2204,7 +2206,7 @@ def generate_launch_description():
     ])
 ```
 
-- [ ] **Paso 3: Completar el paquete y levantarlo entero**
+- [x] **Paso 3: Completar el paquete y levantarlo entero**
 
 ```bash
 cat > ~/coramo/src/coramo_bringup/package.xml <<'EOF'
@@ -2241,7 +2243,7 @@ ros2 node list | sort; timeout 5 ros2 topic echo /coramo/state --once
 ```
 Esperado: los seis nodos en la lista y `/coramo/state` en `IDLE`.
 
-- [ ] **Paso 4: Dejar el modelo como servicio**
+- [x] **Paso 4: Dejar el modelo como servicio**
 
 ```bash
 ssh coramo 'printf "[Unit]\nDescription=CORAMO servidor de lenguaje\nAfter=network.target\n\n[Service]\nUser=coramo\nExecStart=/home/coramo/coramo/tools/bench/llama-server.sh\nRestart=always\nRestartSec=5\n\n[Install]\nWantedBy=multi-user.target\n" > /tmp/l.service
@@ -2253,7 +2255,7 @@ systemctl is-active coramo-llm coramo-speech coramo-voice | tr "\n" " "'
 ```
 Esperado: `active active active`.
 
-- [ ] **Paso 5: Commit**
+- [x] **Paso 5: Commit**
 
 ```bash
 cd ~/coramo && git add src servers && git commit -m "feat(bringup): lanzador, perfiles y los tres servidores como servicios"
@@ -2270,7 +2272,7 @@ cd ~/coramo && git add src servers && git commit -m "feat(bringup): lanzador, pe
 - Consume: todo lo anterior, con backends grabados.
 - Produce: la prueba que debe estar verde en cualquier máquina, sin GPU, sin micrófono y sin robot.
 
-- [ ] **Paso 1: Escribir la prueba**
+- [x] **Paso 1: Escribir la prueba**
 
 ```python
 # src/coramo_brain/test/test_integracion.py
@@ -2338,14 +2340,14 @@ def test_una_orden_no_grabada_hace_que_el_robot_lo_diga():
     assert cmd is None and "entend" in texto.lower()
 ```
 
-- [ ] **Paso 2: Correrla**
+- [x] **Paso 2: Correrla**
 
 ```bash
 cd ~/coramo && PYTHONPATH=src/coramo_brain python3 -m pytest src/coramo_brain/test -q 2>&1 | tail -3
 ```
 Esperado: todas en verde, unas 35 pruebas, en menos de cinco segundos y sin tocar la GPU.
 
-- [ ] **Paso 3: Commit**
+- [x] **Paso 3: Commit**
 
 ```bash
 cd ~/coramo && git add src && git commit -m "test: camino completo sin robot, sin GPU y sin microfono"
@@ -2362,7 +2364,7 @@ cd ~/coramo && git add src && git commit -m "test: camino completo sin robot, si
 **Interfaces:**
 - Produce: la tabla que va a la tesis y el veredicto de si el subproyecto cumple.
 
-- [ ] **Paso 1: Medir latencia y acierto con las 30 órdenes**
+- [x] **Paso 1: Medir latencia y acierto con las 30 órdenes**
 
 ```bash
 ssh coramo 'echo coramo123 | sudo -S -p "" systemctl stop coramo-speech
@@ -2373,7 +2375,7 @@ grep -c "tool_chosen" /tmp/cerebro.log
 ```
 Esperado: la tabla con los cinco tramos. El total hasta la acción debe dar p95 ≤ 1,5 s.
 
-- [ ] **Paso 2: Contar aciertos**
+- [x] **Paso 2: Contar aciertos**
 
 ```bash
 ssh coramo 'paste -d"|" <(cut -d"|" -f2 ~/coramo/tools/bench/ordenes.txt) /tmp/elegidas.txt 2>/dev/null | awk -F"|" "{if(\$1==\$2) ok++} END {print ok\"/\"NR\" aciertos\"}"'
@@ -2381,7 +2383,7 @@ ssh coramo 'paste -d"|" <(cut -d"|" -f2 ~/coramo/tools/bench/ordenes.txt) /tmp/e
 Si el registro no trae las elegidas en un archivo, sacarlas de `/tmp/cerebro.log` con `grep tool_chosen`.
 Esperado: al menos 27 de 30, que es el 90 % del criterio.
 
-- [ ] **Paso 3: Comprobar los criterios que no son de latencia**
+- [x] **Paso 3: Comprobar los criterios que no son de latencia**
 
 ```bash
 # Auto-escucha: 20 respuestas largas seguidas, ninguna debe activar al robot
@@ -2395,11 +2397,11 @@ ssh coramo 'echo coramo123 | sudo -S -p "" systemctl start coramo-voice'
 ```
 Esperado: cero `wake_ok` durante las veinte frases; y con el servidor de voz caído, la orden física igual llega a `/body/command_safe`.
 
-- [ ] **Paso 4: Escribir la bitácora y cerrar el spec**
+- [x] **Paso 4: Escribir la bitácora y cerrar el spec**
 
 Crear `docs/mediciones/<fecha>-subproyecto-a.md` con: hardware y fecha, la tabla de los cinco tramos con p50 y p95, aciertos sobre 30, resultado de auto-escucha, resultado de recuperación, y una línea por cada criterio de la sección 11 del spec diciendo si se cumple. Después, en el spec, marcar esa sección con los números reales.
 
-- [ ] **Paso 5: Commit**
+- [x] **Paso 5: Commit**
 
 ```bash
 cd ~/coramo && git add docs && git commit -m "docs(mediciones): subproyecto A medido y criterios verificados"
