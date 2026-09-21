@@ -2,6 +2,14 @@
 
 Hardware: Xeon E5-2697 v2, RTX 4070 SUPER, Ubuntu 26.04, ROS 2 Lyrical Luth. Cuerpo simulado. Entrada: las 30 órdenes grabadas del hito 0 (`~/datos/ordenes/`), reproducidas a ritmo real por el servidor de habla. Herramienta: `tools/medir_subproyecto_a.py`.
 
+## Cómo repetir estas mediciones
+
+```bash
+./tools/correr_aceptacion.sh latencias      # las 30 órdenes grabadas
+./tools/correr_aceptacion.sh autoescucha    # veinte respuestas largas al aire
+./tools/correr_aceptacion.sh recuperacion   # tumba cada servidor por turno
+```
+
 ## Latencias
 
 Todo se correlaciona por `speech_end`, el instante en que el usuario deja de hablar, que viaja dentro de los mensajes.
